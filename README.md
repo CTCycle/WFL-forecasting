@@ -22,16 +22,16 @@ Run the WLF_launcher.py file to launch the script and use the main menu to navig
 ### Requirements
 This application has been developed and tested using the following dependencies (Python 3.10.12):
 
+- `art==6.1`
 - `keras==2.10.0`
 - `matplotlib==3.7.2`
 - `numpy==1.25.2`
 - `pandas==2.0.3`
 - `scikit-learn==1.3.0`
 - `seaborn==0.12.2`
+- `selenium==4.11.2`
 - `tensorflow==2.10.0`
-- `xlrd==2.0.1`
-- `XlsxWriter==3.1.3`
-- `pydot==1.4.2`
-- `graphviz==0.20.1`
+- `tqdm==4.66.1`
+- `webdriver-manager==4.0.1`
 
 These dependencies are specified in the provided `requirements.txt` file to ensure full compatibility with the application. 
