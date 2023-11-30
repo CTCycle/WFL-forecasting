@@ -32,7 +32,8 @@ FAIRS predictions
 ...
 ''')
 
-# Load dataset
+# Load dataset of prediction inputs (if the file is present in the target folder)
+# else creates a new csv file named predictions_inputs.csv
 #------------------------------------------------------------------------------
 if 'predictions_input.csv' not in os.listdir(GlobVar.fc_path):
     filepath = os.path.join(GlobVar.data_path, 'WFL_extractions.csv')                
@@ -42,14 +43,14 @@ else:
     filepath = os.path.join(GlobVar.pp_path, 'predictions_inputs.csv')                
     df_predictions = pd.read_csv(filepath, sep= ';', encoding='utf-8')
 
-# Load model
+# Load model and associated parameters and show the model structure summary
 #------------------------------------------------------------------------------
 trainworker = ModelTraining(device = cnf.training_device) 
 model = trainworker.load_pretrained_model(GlobVar.model_path)
 parameters = trainworker.model_configuration
 model.summary(expand_nested=True)
 
-# Load normalizer and encoders
+# Load scikit-learn normalizer and one-hot encoders
 #------------------------------------------------------------------------------
 encoder_path = os.path.join(GlobVar.pp_path, 'OHE_encoder_extractions.pkl')
 with open(encoder_path, 'rb') as file:
@@ -66,14 +67,14 @@ with open(encoder_path, 'rb') as file:
 # ...
 #==============================================================================
 
-# map numbers to roulette color and reshape array
+# define subsets of columns to split datasets
 #------------------------------------------------------------------------------
 PP = PreProcessing()
 number_cols = [f'N.{i+1}' for i in range(10)]
 stats_cols = ['sum extractions', 'mean extractions']
 info_cols = ['Concorso', 'Data', 'Ora']
 
-# split dataset into train and test and split further into subsets
+# split dataset into subsets that are given as model inputs
 #------------------------------------------------------------------------------
 samples = df_predictions.shape[0]
 extractions = df_predictions[number_cols]
@@ -81,25 +82,23 @@ times = df_predictions[info_cols]
 statistics = df_predictions[stats_cols]
 specials = df_predictions['Numerone']
 
-# normalize features
+# normalize stats features (sum and mean of extractions)
 #------------------------------------------------------------------------------ 
 statistics = normalizer.transform(statistics)
 
-# generate window datasets
+# generate windowed version of each input dataset
 #------------------------------------------------------------------------------
 X_extractions, _ = PP.timeseries_labeling(extractions, parameters['Window size']) 
 X_times, _ = PP.timeseries_labeling(times, parameters['Window size'])    
 X_statistics, _ = PP.timeseries_labeling(statistics, parameters['Window size'])  
 X_specials, _ = PP.timeseries_labeling(specials, parameters['Window size'])     
 
-# determine categories
+# determine categories that are considered as possible (for each extraction position)
 #------------------------------------------------------------------------------
 categories = []
 for i, col in enumerate(extractions):    
     real_domain = [x for x in range(i+1, i+12)]
     categories.append(real_domain)
-
-
 
 # [PERFORM PREDICTIONS]
 #==============================================================================
@@ -108,11 +107,12 @@ for i, col in enumerate(extractions):
 print('''Perform prediction using the loaded model
 ''')
 
-predictions_inputs = [X_extractions, X_specials]
-
 # predict using pretrained model
 #------------------------------------------------------------------------------ 
+predictions_inputs = [X_extractions, X_specials]
 probability_vectors = model.predict(predictions_inputs)
+
+
 expected_class = np.argmax(probability_vectors, axis=-1)
 last_window = CCM_timeseries.to_list()[-parameters['Window size']:]
 last_window = np.reshape(last_window, (1, parameters['Window size'], 1))

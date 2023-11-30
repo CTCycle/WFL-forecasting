@@ -132,7 +132,7 @@ if cnf.use_test_data == True:
 print('''STEP 3 -----> Save preprocessed files
 ''')
 
-# save encoder
+# save normalizer and one-hot encoder
 #------------------------------------------------------------------------------
 encoder_path = os.path.join(GlobVar.pp_path, 'OHE_encoder_extractions.pkl')
 with open(encoder_path, 'wb') as file:

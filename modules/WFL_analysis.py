@@ -18,8 +18,7 @@ if __name__ == '__main__':
 
 # import modules and components
 #------------------------------------------------------------------------------
-from modules.components.data_classes import PreProcessing
-from modules.components.training_classes import MultiSeqWFL, RealTimeHistory, ModelTraining, ModelValidation
+from modules.components.data_classes import TimeSeriesAnalysis
 import modules.global_variables as GlobVar
 import modules.configurations as cnf
 
@@ -44,6 +43,14 @@ and predict future extractions based on the observed timeseries
 #==============================================================================
 # ...
 #==============================================================================
-print(f'''STEP 1 -----> Preprocess data for WFL training
+print(f'''STEP 1 -----> Analysize timeseries
 ''')
 
+analyzer = TimeSeriesAnalysis()
+number_cols = [f'N.{i+1}' for i in range(10)]
+stats_cols = ['sum extractions', 'mean extractions']
+info_cols = ['Concorso', 'Data', 'Ora']
+
+# histograms
+#------------------------------------------------------------------------------
+analyzer.timeseries_histogram(df_WFL[number_cols], 11, GlobVar.als_path)

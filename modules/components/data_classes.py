@@ -338,7 +338,7 @@ class TimeSeriesAnalysis:
     
     # comparison of histograms (distributions) by superimposing plots
     #========================================================================== 
-    def timeseries_histogram(self, timeseries, bins, name, path, dpi=400):
+    def timeseries_histogram(self, dataframe, bins, path, dpi=400):
         
         """       
         Plots a histogram of the given time series data and saves it as a JPEG image.
@@ -353,22 +353,33 @@ class TimeSeriesAnalysis:
         Returns:            
             None
         
-        """        
-        array = timeseries.values        
-        fig, ax = plt.subplots()
-        plt.hist(array, bins = bins, density = True, label = 'timeseries',
-                 rwidth = 1, edgecolor = 'black')        
-        plt.legend(loc='upper right')
-        plt.title('Histogram of {}'.format(name))
-        plt.xlabel('Time', fontsize = 8)
-        plt.ylabel('Norm frequency', fontsize = 8) 
-        plt.xticks(fontsize = 8)
-        plt.yticks(fontsize = 8)
+        """ 
+        num_cols = len(dataframe.columns)
+        num_rows = num_cols // 2 if num_cols % 2 == 0 else num_cols // 2 + 1
+        fig, axs = plt.subplots(num_rows, 2, figsize=(10, num_rows*5))
+        axs = axs.flatten()  # to handle the case where num_cols < 2
+
+        for i, col in enumerate(dataframe.columns):
+            array = dataframe[col].values
+            axs[i].hist(array, bins = bins, density = True, label = col,
+                        rwidth = 1, edgecolor = 'black')        
+            axs[i].legend(loc='upper right')
+            axs[i].set_title('Histogram of {}'.format(col))
+            axs[i].set_xlabel('Time', fontsize = 8)
+            axs[i].set_ylabel('Norm frequency', fontsize = 8) 
+            axs[i].tick_params(axis='both', which='major', labelsize=8)
+
         plt.tight_layout()
-        plot_loc = os.path.join(path, 'histogram_timeseries_{}.jpeg'.format(name))
+        plot_loc = os.path.join(path, 'histogram_timeseries.jpeg')
         plt.savefig(plot_loc, bbox_inches='tight', format ='jpeg', dpi = dpi)         
 
-        return fig
+        plt.close(fig)     
+
+
+        
+        
+    # comparison of histograms (distributions) by superimposing plots
+    
     
     
     # comparison of data distribution using statistical methods 

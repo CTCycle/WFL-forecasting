@@ -61,8 +61,11 @@ class XamigScraper:
         password_input.send_keys(self.password)   
         button = wait.until(EC.visibility_of_element_located((By.XPATH, '//*[@id="loginform"]/button')))
         button.click() 
-        accept = wait.until(EC.visibility_of_element_located((By.XPATH, '/html/body/div[2]/div[2]/div[1]/div[2]/div[2]/button[1]')))
-        accept.click() 
+        try:
+            accept = wait.until(EC.visibility_of_element_located((By.XPATH, '/html/body/div[2]/div[2]/div[1]/div[2]/div[2]/button[1]')))
+            accept.click()
+        except:
+            pass 
     
     
     #==========================================================================

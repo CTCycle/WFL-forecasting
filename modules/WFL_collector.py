@@ -53,7 +53,7 @@ print('''STEP 2 ---> Extract data from Xamig.com archives
 
 # perform login and download data
 #------------------------------------------------------------------------------
-webscraper.xamig_login(5)
+webscraper.xamig_login(10)
 years = list(range(2013, cnf.current_year + 1))
 webscraper.WLF_data_extraction(5, years)
 time.sleep(3)

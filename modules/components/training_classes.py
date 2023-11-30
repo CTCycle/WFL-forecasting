@@ -6,7 +6,7 @@ import seaborn as sns
 import tensorflow as tf
 from tensorflow import keras
 from keras.models import Model
-from keras.layers import Dense, Dropout, LSTM, BatchNormalization, Conv1D, MaxPool1D
+from keras.layers import Dense, Dropout, LSTM, BatchNormalization, Conv1D, Conv2D, MaxPooling1D, AveragePooling2D
 from keras.layers import Embedding, Reshape, Input, RepeatVector, TimeDistributed, Concatenate, MultiHeadAttention
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.preprocessing import label_binarize
@@ -103,23 +103,7 @@ class MultiSeqWFL:
         self.XLA_state = XLA_state        
 
     def build(self):
-
-        # #----------------------------------------------------------------------
-        # # SEQUENCE STATS
-        # #----------------------------------------------------------------------
-        # stats_input = Input(shape=(self.window_size, self.num_stats))
-        # #----------------------------------------------------------------------
-        # # lstm layers
-        # #---------------------------------------------------------------------- 
-        # lstmA = LSTM(self.neurons*2, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(stats_input)                
-        # lstmB = LSTM(self.neurons*4, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstmA)
-        # #----------------------------------------------------------------------
-        # # dense stratification
-        # #----------------------------------------------------------------------
-        # densestat1 = Dense(self.neurons*3, kernel_initializer='he_uniform', activation='relu')(lstmB) 
-        # densestat2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(densestat1)           
-        # densestat3 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(densestat2)  
-        
+       
 
         #----------------------------------------------------------------------
         # SEQUENCE INPUT
@@ -128,29 +112,32 @@ class MultiSeqWFL:
         #----------------------------------------------------------------------
         # embedding heads
         #---------------------------------------------------------------------- 
-        embedding1 = Embedding(input_dim=self.num_classes_ext, output_dim=self.seq_embedding)(sequence_input)        
-        reshape1 = Reshape((self.window_size, -1))(embedding1)        
+        embedding1 = Embedding(input_dim=self.num_classes_ext, output_dim=self.seq_embedding)(sequence_input)       
         #----------------------------------------------------------------------
         # convolutional block
         #----------------------------------------------------------------------
-        conv1 = Conv1D(self.neurons*2, kernel_size=self.kernel_size, padding='same', activation='relu')(reshape1) 
-        pool1 = MaxPool1D()(conv1)       
-        conv2 = Conv1D(self.neurons*3, kernel_size=self.kernel_size, padding='same', activation='relu')(pool1)
-        pool2 = MaxPool1D()(conv2)           
-        conv3 = Conv1D(self.neurons*4, kernel_size=self.kernel_size, padding='same', activation='relu')(pool2)
-        pool3 = MaxPool1D()(conv3)           
+        conv1 = Conv2D(self.seq_embedding, kernel_size=self.kernel_size, padding='same', activation='relu')(embedding1)  
+        maxpool1 = AveragePooling2D()(conv1)              
+        conv2 = Conv2D(self.neurons*4, kernel_size=self.kernel_size, padding='same', activation='relu')(maxpool1)  
+        maxpool2 = AveragePooling2D()(conv2)              
+        conv3 = Conv2D(self.neurons*2, kernel_size=self.kernel_size, padding='same', activation='relu')(maxpool2)
         
         #----------------------------------------------------------------------
+        # tensor reshaping fro 4D to 3D
+        #----------------------------------------------------------------------  
+        conv_out_shape = conv3.shape           
+        reshape = Reshape((conv_out_shape[1], conv_out_shape[2] * conv_out_shape[3]))(conv3)
+        #----------------------------------------------------------------------
         # lstm block (recurrent network)
-        #----------------------------------------------------------------------         
-        lstm1 = LSTM(self.neurons*2, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(pool3)                
-        lstm2 = LSTM(self.neurons*4, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm1)
+        #----------------------------------------------------------------------                 
+        lstm1 = LSTM(self.neurons*4, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(reshape)                
+        lstm2 = LSTM(self.neurons*2, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm1)
         #----------------------------------------------------------------------
         # post recurrent dense block
         #----------------------------------------------------------------------
-        densern1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(lstm2)
-        bnorm1 = BatchNormalization()(densern1)
-        drop1 = Dropout(rate=0.2, seed=self.seed)(bnorm1) 
+        bnormrn1 = BatchNormalization()(lstm2)
+        densern1 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnormrn1)
+        
 
         #----------------------------------------------------------------------
         # SPECIAL NUMBER INPUT
@@ -164,40 +151,42 @@ class MultiSeqWFL:
         #----------------------------------------------------------------------
         # convolutional block
         #----------------------------------------------------------------------         
-        conv4 = Conv1D(self.neurons*2, kernel_size=self.kernel_size, padding='same', activation='relu')(reshape2)
-        pool4 = MaxPool1D()(conv4)           
-        conv5 = Conv1D(self.neurons*3, kernel_size=self.kernel_size, padding='same', activation='relu')(pool4) 
-        pool5 = MaxPool1D()(conv5)           
-        conv6 = Conv1D(self.neurons*3, kernel_size=self.kernel_size, padding='same', activation='relu')(pool5)  
-        pool6 = MaxPool1D()(conv6)                   
+        conv4 = Conv1D(self.special_embedding, kernel_size=self.kernel_size, padding='same', activation='relu')(reshape2)                   
+        conv5 = Conv1D(self.neurons*4, kernel_size=self.kernel_size, padding='same', activation='relu')(conv4)               
+        conv6 = Conv1D(self.neurons*2, kernel_size=self.kernel_size, padding='same', activation='relu')(conv5)  
+                        
         #----------------------------------------------------------------------
         # lstm block (recurrent network)
         #----------------------------------------------------------------------         
-        lstm3 = LSTM(self.neurons*2, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(pool6)                
-        lstm4 = LSTM(self.neurons*4, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm3)
+        lstm3 = LSTM(self.neurons*2, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(conv6)                
+        lstm4 = LSTM(self.neurons*2, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm3)
         #----------------------------------------------------------------------
         # post recurrent dense block
         #----------------------------------------------------------------------
-        densern2 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(lstm4)
-        bnorm2 = BatchNormalization()(densern2)
-        drop2 = Dropout(rate=0.2, seed=self.seed)(bnorm2) 
+        bnormsp1 = BatchNormalization()(lstm4)
+        densesp1 = Dense(self.neurons, kernel_initializer='he_uniform', activation='relu')(bnormsp1)
+        
         
         #----------------------------------------------------------------------
         # CONCATENATED BLOCK
         #----------------------------------------------------------------------         
-        concat1 = Concatenate()([drop1, drop2])
-        densecat1 = Dense(self.neurons*3, kernel_initializer='he_uniform', activation='relu')(concat1) 
-        densecat2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(densecat1)           
-        densecat3 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(densecat2)  
+        concat1 = Concatenate()([densern1, densesp1])
+        bnorm1 = BatchNormalization()(concat1)
+        densecat1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(bnorm1)
+        bnorm2 = BatchNormalization()(densecat1) 
+        densecat2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnorm2)
+        bnorm3 = BatchNormalization()(densecat2)            
+        densecat3 = Dense(self.neurons, kernel_initializer='he_uniform', activation='relu')(bnorm3)  
 
         #----------------------------------------------------------------------
         # REPEATED VECTOR TAIL
         #----------------------------------------------------------------------               
-        concat2 = Concatenate()([drop1, densecat3])
+        concat2 = Concatenate()([densern1, densecat3])
         repeat = RepeatVector(n=self.num_features)(concat2)
-        denserep1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(repeat)
-        bnormrep1 = BatchNormalization()(denserep1)        
-        denserep2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnormrep1) 
+        bnorm4 = BatchNormalization()(repeat)   
+        denserep1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(bnorm4)   
+        bnorm5 = BatchNormalization()(denserep1)              
+        denserep2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnorm5) 
         #----------------------------------------------------------------------                     
         # set outputs           
         #---------------------------------------------------------------------- 
@@ -207,10 +196,11 @@ class MultiSeqWFL:
         #----------------------------------------------------------------------
         # DENSE TAIL FOR SPECIAL NUMBER
         #----------------------------------------------------------------------              
-        concat3 = Concatenate()([drop2, densecat3])
-        densesp1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(concat3)
-        bnormsp1 = BatchNormalization()(densesp1)        
-        densesp2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnormsp1)
+        concat3 = Concatenate()([densesp1, densecat3])
+        bnorm6 = BatchNormalization()(concat3)  
+        densesp1 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnorm6)
+        bnorm7 = BatchNormalization()(densesp1)                
+        densesp2 = Dense(self.neurons, kernel_initializer='he_uniform', activation='relu')(bnorm7)
         #----------------------------------------------------------------------                     
         # set outputs           
         #----------------------------------------------------------------------       
