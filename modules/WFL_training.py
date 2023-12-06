@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pickle
 import tensorflow as tf
-from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, MultiLabelBinarizer
 from keras.utils.vis_utils import plot_model
 
 # set warnings
@@ -42,7 +42,7 @@ Leverage large volume of Win For Life extractions (from the Xamig.com database)
 and predict future extractions based on the observed timeseries 
 ''')
 
-# [COLOR MAPPING AND ENCODING]
+# [MAPPING AND ENCODING]
 #==============================================================================
 # ...
 #==============================================================================
@@ -57,7 +57,7 @@ STEP 1 -----> Split datasets and generate windows for model training
 PP = PreProcessing()
 number_cols = [f'N.{i+1}' for i in range(10)]
 stats_cols = ['sum extractions', 'mean extractions']
-info_cols = ['Concorso', 'Data', 'Ora']
+time_cols = ['Data', 'Ora']
 
 # split dataset into train and test and split further into subsets
 #------------------------------------------------------------------------------
@@ -65,16 +65,27 @@ if cnf.use_test_data == True:
     trainset, testset = PP.split_timeseries(df_WFL, cnf.test_size, inverted=cnf.invert_test)     
     train_samples, test_samples = trainset.shape[0], testset.shape[0]
     train_ext, test_ext = trainset[number_cols], testset[number_cols]
-    train_time, test_time = trainset[info_cols], testset[info_cols]
+    train_time, test_time = trainset[time_cols], testset[time_cols]
     train_stats, test_stats = trainset[stats_cols], testset[stats_cols]
     train_special, test_special = trainset['Numerone'], testset['Numerone']
 else:
     trainset = df_WFL.copy()
     train_samples, test_samples = trainset.shape[0], 0
     train_ext = trainset[number_cols]
-    train_time = trainset[info_cols]
+    train_time = trainset[time_cols]
     train_stats = trainset[stats_cols]
     train_special = trainset['Numerone'] 
+
+# convert time data and encode daytime
+#------------------------------------------------------------------------------ 
+drop_cols = ['Data', 'Ora']
+train_time['daytime'] = pd.to_datetime(train_time['Ora']).dt.hour * 60 + pd.to_datetime(train_time['Ora']).dt.minute
+train_time['date'] = (pd.to_datetime(train_time['Data']) - pd.Timestamp('1970-01-01')) // pd.Timedelta('1D')
+train_time = train_time.drop(drop_cols, axis = 1)
+if cnf.use_test_data == True:
+    test_time['daytime'] = pd.to_datetime(test_time['Ora']).dt.hour * 60 + pd.to_datetime(test_time['Ora']).dt.minute
+    test_time['date'] = (pd.to_datetime(test_time['Data']) - pd.Timestamp('1970-01-01')) // pd.Timedelta('1D')
+    test_time = test_time.drop(drop_cols, axis = 1)
 
 # normalize features
 #------------------------------------------------------------------------------ 
@@ -86,21 +97,16 @@ if cnf.use_test_data == True:
     
 # generate window datasets
 #------------------------------------------------------------------------------
-if cnf.use_test_data == True:    
-    X_train_ext, Y_train_ext = PP.timeseries_labeling(train_ext, cnf.window_size)     
-    X_test_ext, Y_test_ext = PP.timeseries_labeling(test_ext, cnf.window_size)   
-    X_train_time, _ = PP.timeseries_labeling(train_time, cnf.window_size)     
-    X_test_time, _ = PP.timeseries_labeling(test_time, cnf.window_size)
-    X_train_stats, _ = PP.timeseries_labeling(train_stats, cnf.window_size)
-    X_test_stats, _ = PP.timeseries_labeling(test_stats, cnf.window_size)
-    X_train_special, Y_train_special = PP.timeseries_labeling(train_special, cnf.window_size)     
-    X_test_special, Y_test_special = PP.timeseries_labeling(test_special, cnf.window_size)
-else:
-    X_train_ext, Y_train_ext = PP.timeseries_labeling(train_ext, cnf.window_size)    
-    X_train_time, _ = PP.timeseries_labeling(train_time, cnf.window_size) 
-    X_train_stats, Y_train_stats = PP.timeseries_labeling(train_stats, cnf.window_size)   
-    X_train_special, Y_train_special = PP.timeseries_labeling(train_special, cnf.window_size)  
-
+X_train_ext, Y_train_ext = PP.timeseries_labeling(train_ext, cnf.window_size)
+X_train_special, Y_train_special = PP.timeseries_labeling(train_special, cnf.window_size)     
+X_train_time, _ = PP.timeseries_labeling(train_time, cnf.window_size) 
+X_train_stats, _ = PP.timeseries_labeling(train_stats, cnf.window_size) 
+if cnf.use_test_data == True:           
+    X_test_ext, Y_test_ext = PP.timeseries_labeling(test_ext, cnf.window_size) 
+    X_test_special, Y_test_special = PP.timeseries_labeling(test_special, cnf.window_size)    
+    X_test_time, _ = PP.timeseries_labeling(test_time, cnf.window_size)    
+    X_test_stats, _ = PP.timeseries_labeling(test_stats, cnf.window_size)    
+ 
 # [ONE HOT ENCODE THE LABELS]
 #==============================================================================
 # ...
@@ -110,14 +116,15 @@ print('''STEP 2 -----> One-Hot encode timeseries labels (Y data) and normalize s
 
 # determine categories
 #------------------------------------------------------------------------------
-categories = []
+all_categories = [x+1 for x in range(20)]
+possible_categories = []
 for i, col in enumerate(train_ext):    
-    real_domain = [x for x in range(i+1, i+12)]
-    categories.append(real_domain)
+    pos_categories = [x for x in range(i+1, i+12)]
+    possible_categories.append(pos_categories)
 
 # one hot encode the output for softmax training shape = (timesteps, features)
 #------------------------------------------------------------------------------
-OH_encoder_ext = OneHotEncoder(categories=categories, sparse=False, dtype='float32')
+OH_encoder_ext = MultiLabelBinarizer(classes=all_categories)
 OH_encoder_special = OneHotEncoder(sparse=False, dtype='float32')
 Y_train_ext_OHE = OH_encoder_ext.fit_transform(Y_train_ext)
 Y_train_special_OHE = OH_encoder_special.fit_transform(Y_train_special.reshape(-1,1))
@@ -143,7 +150,6 @@ with open(encoder_path, 'wb') as file:
 encoder_path = os.path.join(GlobVar.pp_path, 'normalizer.pkl')
 with open(encoder_path, 'wb') as file:
     pickle.dump(normalizer, file)
-
 
 # generate dataframes to savbe preprocessed data
 #------------------------------------------------------------------------------
@@ -199,13 +205,6 @@ Number of timepoints in test dataset:  {test_samples}
 print('''STEP 4 -----> Build the model and start training
 ''')
 
-
-# reshape Y data
-#------------------------------------------------------------------------------
-Y_train_ext_OHE = np.reshape(Y_train_ext_OHE, (Y_train_ext_OHE.shape[0], 10, 11))
-if cnf.use_test_data == True: 
-    Y_test_ext_OHE = np.reshape(Y_test_ext_OHE, (Y_test_ext_OHE.shape[0], 10, 11))
-
 # activate training framework and create model folder
 #------------------------------------------------------------------------------
 trainworker = ModelTraining(device=cnf.training_device, seed=cnf.seed, 
@@ -215,8 +214,8 @@ model_savepath = PP.model_savefolder(GlobVar.model_path, 'MultiSeqWFL')
 # initialize model class
 #------------------------------------------------------------------------------
 modelframe = MultiSeqWFL(cnf.learning_rate, cnf.window_size, cnf.embedding_sequence,
-                         cnf.embedding_special, cnf.kernel_size, cnf.neuron_baseline, 
-                         seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
+                         cnf.embedding_special, cnf.kernel_size, seed=cnf.seed, 
+                         XLA_state=cnf.XLA_acceleration)
 model = modelframe.build()
 model.summary(expand_nested=True)
 
@@ -234,9 +233,9 @@ if cnf.generate_model_graph == True:
 # use command prompt on the model folder and (upon activating environment), 
 # use the bash command: python -m tensorboard.main --logdir = tensorboard/
 #==============================================================================
-train_model_inputs = [X_train_ext, X_train_special]
+train_model_inputs = [X_train_time, X_train_ext, X_train_special]
 train_model_outputs = [Y_train_ext_OHE, Y_train_special_OHE]
-test_model_inputs = [X_test_ext, X_test_special]
+test_model_inputs = [X_test_time, X_test_ext, X_test_special]
 test_model_outputs = [Y_test_ext_OHE, Y_test_special_OHE]
 
 # training loop and model saving at end
@@ -258,7 +257,7 @@ else:
     callbacks = [RTH_callback]
 
 training = model.fit(x=train_model_inputs, y=train_model_outputs, batch_size=cnf.batch_size, 
-                     validation_data=validation_data, epochs = cnf.epochs, verbose=1, 
+                     validation_data=validation_data, epochs = cnf.epochs, verbose=1, shuffle=False, 
                      callbacks = callbacks, workers = 6, use_multiprocessing=True)
 
 model.save(model_savepath)
@@ -266,8 +265,7 @@ model.save(model_savepath)
 # save model parameters in txt files
 #------------------------------------------------------------------------------
 parameters = {'Number of train samples' : train_samples,
-              'Number of test samples' : test_samples,              
-              'Lowest neurons number' : cnf.neuron_baseline,
+              'Number of test samples' : test_samples,             
               'Window size' : cnf.window_size,              
               'Embedding dimensions (sequences)' : cnf.embedding_sequence,  
               'Embedding dimensions (special)' : cnf.embedding_special,            
@@ -287,22 +285,12 @@ validator = ModelValidation(model)
 
 # predict lables from train set
 #------------------------------------------------------------------------------
-predicted_train = model.predict(train_model_inputs, verbose=1)
-
-
-# y_pred_labels = np.argmax(predicted_train, axis=-1)
+#predicted_train = model.predict(train_model_inputs, verbose=1)
+# predicted_extractions = []
+# predicted_special = np.argmax(predicted_train[1], axis=-1)
 # y_true_labels = np.argmax(Y_train_OHE, axis=-1)
 # Y_pred, Y_true = y_pred_labels[:, 0], y_true_labels[:, 0]
 
-# # show predicted classes (train dataset)
-# #------------------------------------------------------------------------------
-# class_pred, class_true = np.unique(Y_pred), np.unique(Y_true)
-# print(f'''
-# Number of classes observed in train (true labels): {len(class_true)}
-# Number of classes observed in train (predicted labels): {len(class_pred)}
-# Classes observed in predicted train labels:''')
-# for x in class_pred:
-#     print(x)
 
 # # generate confusion matrix from train set (if class num is equal)
 # #------------------------------------------------------------------------------
@@ -324,12 +312,7 @@ predicted_train = model.predict(train_model_inputs, verbose=1)
 # # show predicted classes (testdataset)
 # #------------------------------------------------------------------------------
 #     class_pred, class_true = np.unique(Y_pred), np.unique(Y_true)
-#     print(f'''
-# Number of classes observed in test (true labels): {len(class_true)}
-# Number of classes observed in test (predicted labels): {len(class_pred)}
-# Classes observed in predicted test labels:''')
-#     for x in class_pred:
-#         print(x)     
+
 
 # # generate confusion matrix from test set (if class num is equal)
 # #------------------------------------------------------------------------------

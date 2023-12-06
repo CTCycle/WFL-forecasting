@@ -6,7 +6,7 @@ import seaborn as sns
 import tensorflow as tf
 from tensorflow import keras
 from keras.models import Model
-from keras.layers import Dense, Dropout, LSTM, BatchNormalization, Conv1D, Conv2D, MaxPooling1D, AveragePooling2D
+from keras.layers import Dense, Dropout, LSTM, BatchNormalization, Conv1D, Conv2D, AveragePooling2D
 from keras.layers import Embedding, Reshape, Input, RepeatVector, TimeDistributed, Concatenate, MultiHeadAttention
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.preprocessing import label_binarize
@@ -87,7 +87,7 @@ class RealTimeHistory(keras.callbacks.Callback):
 class MultiSeqWFL:
 
     def __init__(self, learning_rate, window_size, embedding_seq, embedding_special,
-                 kernel_size, neurons, seed=42, XLA_state=False):
+                 kernel_size, seed=42, XLA_state=False):
 
         self.num_features = 10
         self.num_stats = 2
@@ -97,126 +97,161 @@ class MultiSeqWFL:
         self.window_size = window_size
         self.seq_embedding = embedding_seq
         self.special_embedding = embedding_special
-        self.kernel_size = kernel_size        
-        self.neurons = neurons                
+        self.kernel_size = kernel_size                       
         self.seed = seed       
-        self.XLA_state = XLA_state        
+        self.XLA_state = XLA_state 
 
-    def build(self):
-       
+    #--------------------------------------------------------------------------
+    def _time_encoder(self):
+        
+        sequence_input = Input(shape=(self.window_size, 2))        
+        embedding = Embedding(input_dim=self.num_classes_ext, output_dim=self.seq_embedding)(sequence_input)               
+        reshape = Reshape((self.window_size, -1))(embedding)
 
-        #----------------------------------------------------------------------
-        # SEQUENCE INPUT
-        #----------------------------------------------------------------------
-        sequence_input = Input(shape=(self.window_size, self.num_features))
-        #----------------------------------------------------------------------
-        # embedding heads
-        #---------------------------------------------------------------------- 
-        embedding1 = Embedding(input_dim=self.num_classes_ext, output_dim=self.seq_embedding)(sequence_input)       
-        #----------------------------------------------------------------------
+        # tensor reshaping and LSTM block
+        #----------------------------------------------------------------------                         
+        lstm1 = LSTM(64, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(reshape)                
+        lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm1)        
+        bnorm = BatchNormalization()(lstm2)
+        output = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm)
+
+        self.time_encoder = Model(inputs=sequence_input, outputs=output)
+
+        return self.time_encoder
+
+    #--------------------------------------------------------------------------
+    def _sequence_encoder(self):
+        
+        sequence_input = Input(shape=(self.window_size, self.num_features))        
+        embedding = Embedding(input_dim=self.num_classes_ext, output_dim=self.seq_embedding)(sequence_input)     
+        
         # convolutional block
         #----------------------------------------------------------------------
-        conv1 = Conv2D(self.seq_embedding, kernel_size=self.kernel_size, padding='same', activation='relu')(embedding1)  
+        conv1 = Conv2D(64, kernel_size=self.kernel_size, padding='same', activation='relu')(embedding)  
         maxpool1 = AveragePooling2D()(conv1)              
-        conv2 = Conv2D(self.neurons*4, kernel_size=self.kernel_size, padding='same', activation='relu')(maxpool1)  
+        conv2 = Conv2D(128, kernel_size=self.kernel_size, padding='same', activation='relu')(maxpool1)  
         maxpool2 = AveragePooling2D()(conv2)              
-        conv3 = Conv2D(self.neurons*2, kernel_size=self.kernel_size, padding='same', activation='relu')(maxpool2)
-        
-        #----------------------------------------------------------------------
-        # tensor reshaping fro 4D to 3D
+        conv3 = Conv2D(256, kernel_size=self.kernel_size, padding='same', activation='selu')(maxpool2)        
+       
+        # tensor reshaping and LSTM block
         #----------------------------------------------------------------------  
-        conv_out_shape = conv3.shape           
-        reshape = Reshape((conv_out_shape[1], conv_out_shape[2] * conv_out_shape[3]))(conv3)
-        #----------------------------------------------------------------------
-        # lstm block (recurrent network)
-        #----------------------------------------------------------------------                 
-        lstm1 = LSTM(self.neurons*4, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(reshape)                
-        lstm2 = LSTM(self.neurons*2, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm1)
-        #----------------------------------------------------------------------
-        # post recurrent dense block
-        #----------------------------------------------------------------------
-        bnormrn1 = BatchNormalization()(lstm2)
-        densern1 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnormrn1)
-        
+        reshape = Reshape((conv3.shape[1], conv3.shape[2] * conv3.shape[3]))(conv3)                         
+        lstm1 = LSTM(256, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(reshape)                
+        lstm2 = LSTM(512, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm1)        
+        bnorm = BatchNormalization()(lstm2)
+        output = Dense(512, kernel_initializer='he_uniform', activation='relu')(bnorm)
 
-        #----------------------------------------------------------------------
-        # SPECIAL NUMBER INPUT
-        #----------------------------------------------------------------------
-        special_input = Input(shape=(self.window_size, 1)) 
-        #----------------------------------------------------------------------
-        # embedding heads
-        #----------------------------------------------------------------------        
-        embedding2 = Embedding(input_dim=self.num_classes_special, output_dim=self.special_embedding)(special_input)  
-        reshape2 = Reshape((self.window_size, -1))(embedding2)
-        #----------------------------------------------------------------------
-        # convolutional block
-        #----------------------------------------------------------------------         
-        conv4 = Conv1D(self.special_embedding, kernel_size=self.kernel_size, padding='same', activation='relu')(reshape2)                   
-        conv5 = Conv1D(self.neurons*4, kernel_size=self.kernel_size, padding='same', activation='relu')(conv4)               
-        conv6 = Conv1D(self.neurons*2, kernel_size=self.kernel_size, padding='same', activation='relu')(conv5)  
-                        
-        #----------------------------------------------------------------------
+        self.sequence_encoder = Model(inputs=sequence_input, outputs=output)
+
+        return self.sequence_encoder
+    
+    #--------------------------------------------------------------------------
+    def _specialnum_encoder(self):  
+
+        special_input = Input(shape=(self.window_size, 1))         
+        embedding = Embedding(input_dim=self.num_classes_special, output_dim=self.special_embedding)(special_input)  
+        reshape = Reshape((self.window_size, -1))(embedding)                         
+        
         # lstm block (recurrent network)
         #----------------------------------------------------------------------         
-        lstm3 = LSTM(self.neurons*2, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(conv6)                
-        lstm4 = LSTM(self.neurons*2, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm3)
-        #----------------------------------------------------------------------
-        # post recurrent dense block
-        #----------------------------------------------------------------------
-        bnormsp1 = BatchNormalization()(lstm4)
-        densesp1 = Dense(self.neurons, kernel_initializer='he_uniform', activation='relu')(bnormsp1)
+        lstm1 = LSTM(64, use_bias=True, return_sequences=True, activation='tanh', dropout=0.2)(reshape)                
+        lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', dropout=0.2)(lstm1)        
+        bnorm = BatchNormalization()(lstm2)
+        output = Dense(128, kernel_initializer='he_uniform', activation='selu')(bnorm)
+
+        self.specialnum_encoder = Model(inputs=special_input, outputs=output)
+
+        return self.specialnum_encoder
+
+    #--------------------------------------------------------------------------
+    def _concatenated_encoder(self):        
+
+        time_input = Input(shape=(self.time_encoder.output_shape[1:]))
+        sequence_input = Input(shape=(self.sequence_encoder.output_shape[1:]))
+        special_input = Input(shape=(self.specialnum_encoder.output_shape[1:]))
         
-        
-        #----------------------------------------------------------------------
-        # CONCATENATED BLOCK
-        #----------------------------------------------------------------------         
-        concat1 = Concatenate()([densern1, densesp1])
-        bnorm1 = BatchNormalization()(concat1)
-        densecat1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(bnorm1)
+        concat = Concatenate()([time_input, sequence_input, special_input])        
+        bnorm1 = BatchNormalization()(concat)
+        densecat1 = Dense(512, kernel_initializer='he_uniform', activation='relu')(bnorm1)
         bnorm2 = BatchNormalization()(densecat1) 
-        densecat2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnorm2)
+        densecat2 = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm2)
         bnorm3 = BatchNormalization()(densecat2)            
-        densecat3 = Dense(self.neurons, kernel_initializer='he_uniform', activation='relu')(bnorm3)  
+        output = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm3)
+            
+        self.concatenated_encoder = Model(inputs=[time_input, sequence_input, special_input], outputs=output)                  
 
-        #----------------------------------------------------------------------
-        # REPEATED VECTOR TAIL
-        #----------------------------------------------------------------------               
-        concat2 = Concatenate()([densern1, densecat3])
-        repeat = RepeatVector(n=self.num_features)(concat2)
-        bnorm4 = BatchNormalization()(repeat)   
-        denserep1 = Dense(self.neurons*4, kernel_initializer='he_uniform', activation='relu')(bnorm4)   
-        bnorm5 = BatchNormalization()(denserep1)              
-        denserep2 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnorm5) 
-        #----------------------------------------------------------------------                     
-        # set outputs           
-        #---------------------------------------------------------------------- 
-        output_seq = TimeDistributed(Dense(self.num_classes_ext, activation='softmax', 
-                                           name='extractions', dtype='float32'))(denserep2)
+        return self.concatenated_encoder
 
+    #--------------------------------------------------------------------------
+    def _sequence_decoder(self):
+       
+        sequence_input = Input(shape=(self.sequence_encoder.output_shape[1:]))
+        concat_input = Input(shape=(self.concatenated_encoder.output_shape[1:]))        
+
+        concat = Concatenate()([sequence_input, concat_input])           
+        dense1 = Dense(512, kernel_initializer='he_uniform', activation='relu')(concat)   
+        bnorm = BatchNormalization()(dense1)              
+        dense2 = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm)  
+        bnorm2 = BatchNormalization()(dense2)              
+        dense3 = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm2)        
+        output = Dense(20, activation='sigmoid', name='extractions', dtype='float32')(dense3)        
+        
+        self.sequence_decoder = Model(inputs=[sequence_input, concat_input], outputs=output,
+                                      name='sequence_decoder')
+
+        return self.sequence_decoder
+
+    #--------------------------------------------------------------------------
+    def _specialnum_decoder(self):
+
+        special_input = Input(shape=(self.specialnum_encoder.output_shape[1:]))
+        concat_input = Input(shape=(self.concatenated_encoder.output_shape[1:]))
+
+        concat = Concatenate()([special_input, concat_input])          
+        dense1 = Dense(128, kernel_initializer='he_uniform', activation='relu')(concat)
+        bnorm2 = BatchNormalization()(dense1)                
+        dense2 = Dense(64, kernel_initializer='he_uniform', activation='relu')(bnorm2)               
+        output = Dense(self.num_classes_special, activation='softmax', 
+                               name='special_number', dtype='float32')(dense2)
+        
+        self.specialnum_decoder = Model(inputs=[special_input, concat_input], outputs=output,
+                                        name='special_decoder')
+
+        return self.specialnum_decoder
+
+
+    #--------------------------------------------------------------------------
+    def build(self):
+
+        time_encoder = self._time_encoder()
+        sequence_encoder = self._sequence_encoder()
+        special_encoder = self._specialnum_encoder()
+        concat_encoder = self._concatenated_encoder()      
+        sequence_decoder = self._sequence_decoder() 
+        special_decoder = self._specialnum_decoder() 
         #----------------------------------------------------------------------
-        # DENSE TAIL FOR SPECIAL NUMBER
-        #----------------------------------------------------------------------              
-        concat3 = Concatenate()([densesp1, densecat3])
-        bnorm6 = BatchNormalization()(concat3)  
-        densesp1 = Dense(self.neurons*2, kernel_initializer='he_uniform', activation='relu')(bnorm6)
-        bnorm7 = BatchNormalization()(densesp1)                
-        densesp2 = Dense(self.neurons, kernel_initializer='he_uniform', activation='relu')(bnorm7)
-        #----------------------------------------------------------------------                     
-        # set outputs           
+        time_input = Input(shape=(self.window_size, 2))   
+        sequence_input = Input(shape=(self.window_size, self.num_features))   
+        special_input = Input(shape=(self.window_size, 1))        
+        #----------------------------------------------------------------------
+        time_head = time_encoder(time_input)
+        sequence_head = sequence_encoder(sequence_input)
+        special_head = special_encoder(special_input)        
+        concatenation = concat_encoder([time_head, sequence_head, special_head]) 
+        sequence_output = sequence_decoder([sequence_head, concatenation])
+        special_output = special_decoder([special_head, concatenation])
         #----------------------------------------------------------------------       
-        output_special = Dense(self.num_classes_special, activation='softmax', 
-                               name='special_number', dtype='float32')(densesp2)
+        inputs = [time_input, sequence_input, special_input]
+        outputs = [sequence_output, special_output]
 
-        #----------------------------------------------------------------------
-        # COMPILE MODEL
-        #----------------------------------------------------------------------  
-        inputs = [sequence_input, special_input]
-        outputs = [output_seq, output_special]
         model = Model(inputs = inputs, outputs = outputs, name = 'MultiSeqWFL_model')    
         opt = keras.optimizers.Adam(learning_rate=self.learning_rate)
-        loss = keras.losses.CategoricalCrossentropy(from_logits=False)
-        metrics = keras.metrics.CategoricalAccuracy()
-        model.compile(loss = loss, optimizer = opt, metrics = metrics,
+        loss_ext = keras.losses.BinaryCrossentropy()
+        loss_special = keras.losses.CategoricalCrossentropy(from_logits=False)
+        metric_ext = keras.metrics.Precision()
+        metric_special = keras.metrics.CategoricalAccuracy()
+        model.compile(loss = [loss_ext, loss_special], optimizer = opt, 
+                      metrics={'sequence_decoder': metric_ext, 'special_decoder': metric_special},
                       jit_compile=self.XLA_state)       
         
         return model             

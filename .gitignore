@@ -21,3 +21,10 @@ model/MultiSeqWFL_20231130H1013/saved_model.pb
 model/MultiSeqWFL_20231130H1013/training_history.jpeg
 model/MultiSeqWFL_20231130H1013/variables/variables.data-00000-of-00001
 model/MultiSeqWFL_20231130H1013/variables/variables.index
+model/MultiSeqWFL_20231206H1752/keras_metadata.pb
+model/MultiSeqWFL_20231206H1752/model_parameters.json
+model/MultiSeqWFL_20231206H1752/MultiSeqWFL_model.png
+model/MultiSeqWFL_20231206H1752/saved_model.pb
+model/MultiSeqWFL_20231206H1752/training_history.jpeg
+model/MultiSeqWFL_20231206H1752/variables/variables.data-00000-of-00001
+model/MultiSeqWFL_20231206H1752/variables/variables.index

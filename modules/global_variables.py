@@ -3,9 +3,9 @@ import os
 # Define paths
 #------------------------------------------------------------------------------
 data_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'dataset')
+fc_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'predictions')
 model_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'model')
 pp_path = os.path.join(data_path, 'preprocessed data')
-fc_path = os.path.join(data_path, 'predictions')
 als_path = os.path.join(data_path, 'analysis')
 
 # Create folders
