@@ -22,9 +22,10 @@ print(ascii_art)
 user_operations = UserOperations()
 operations_menu = {'1' : 'Collect Win for Life extractions',
                    '2' : 'Analyze WFL data',  
-                   '3' : 'Pretrain forecasting model',
-                   '4' : 'Predict next extraction',                                                     
-                   '5' : 'Exit and close'}
+                   '3' : 'Pretrain WFL model',
+                   '4' : 'Pretrain WFL model (K-fold training)',
+                   '5' : 'Predict next extraction',                                                     
+                   '6' : 'Exit and close'}
 
 while True:
     print('------------------------------------------------------------------------')    
@@ -40,9 +41,12 @@ while True:
         import modules.WFL_training
         del sys.modules['modules.WFL_training']
     elif op_sel == 4:
+        import modules.WFL_kfold_training
+        del sys.modules['modules.WFL_kfold_training']
+    elif op_sel == 5:
         import modules.WFL_forecast
         del sys.modules['modules.WFL_forecast']
-    elif op_sel == 5:
+    elif op_sel == 6:
         break
 
 

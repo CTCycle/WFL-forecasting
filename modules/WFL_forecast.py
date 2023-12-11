@@ -43,22 +43,28 @@ else:
     filepath = os.path.join(GlobVar.pp_path, 'predictions_inputs.csv')                
     df_predictions = pd.read_csv(filepath, sep= ';', encoding='utf-8')
 
-# Load model and associated parameters and show the model structure summary
+# drop unused columns and reset index
+#------------------------------------------------------------------------------
+df_predictions.drop(columns=['sum extractions', 'mean extractions'], inplace=True)
+df_predictions.reset_index(inplace=True)
+
+# Load model
 #------------------------------------------------------------------------------
 trainworker = ModelTraining(device = cnf.training_device) 
 model = trainworker.load_pretrained_model(GlobVar.model_path)
+load_path = trainworker.model_path
 parameters = trainworker.model_configuration
 model.summary(expand_nested=True)
 
 # Load scikit-learn normalizer and one-hot encoders
 #------------------------------------------------------------------------------
-encoder_path = os.path.join(GlobVar.pp_path, 'OHE_encoder_extractions.pkl')
+encoder_path = os.path.join(load_path, 'preprocessed data', 'OHE_encoder_extractions.pkl')
 with open(encoder_path, 'rb') as file:
     encoder_ext = pickle.load(file)
-encoder_path = os.path.join(GlobVar.pp_path, 'OHE_encoder_special.pkl')
+encoder_path = os.path.join(load_path, 'preprocessed data',  'OHE_encoder_special.pkl')
 with open(encoder_path, 'rb') as file:
     encoder_sp = pickle.load(file)
-encoder_path = os.path.join(GlobVar.pp_path, 'normalizer.pkl')
+encoder_path = os.path.join(load_path, 'preprocessed data',  'normalizer.pkl')
 with open(encoder_path, 'rb') as file:
     normalizer = pickle.load(file)
 
@@ -77,7 +83,6 @@ Data preprocessing
 #------------------------------------------------------------------------------
 PP = PreProcessing()
 number_cols = [f'N.{i+1}' for i in range(10)]
-stats_cols = ['sum extractions', 'mean extractions']
 time_cols = ['Data', 'Ora']
 
 # split dataset into subsets that are given as model inputs
@@ -85,12 +90,11 @@ time_cols = ['Data', 'Ora']
 samples = df_predictions.shape[0]
 extractions = df_predictions[number_cols]
 times = df_predictions[time_cols]
-statistics = df_predictions[stats_cols]
 specials = df_predictions['Numerone']
 
 # convert time data and encode daytime
 #------------------------------------------------------------------------------ 
-drop_cols = ['Data', 'Ora']
+drop_cols = ['Data', 'Ora', 'date']
 times['daytime'] = pd.to_datetime(times['Ora']).dt.hour * 60 + pd.to_datetime(times['Ora']).dt.minute
 times['date'] = (pd.to_datetime(times['Data']) - pd.Timestamp('1970-01-01')) // pd.Timedelta('1D')
 times = times.drop(drop_cols, axis = 1)
@@ -99,9 +103,7 @@ times = times.drop(drop_cols, axis = 1)
 #------------------------------------------------------------------------------
 X_extractions, _ = PP.timeseries_labeling(extractions, parameters['Window size']) 
 X_times, _ = PP.timeseries_labeling(times, parameters['Window size'])    
-X_statistics, _ = PP.timeseries_labeling(statistics, parameters['Window size'])  
-X_specials, _ = PP.timeseries_labeling(specials, parameters['Window size'])     
-
+X_specials, _ = PP.timeseries_labeling(specials, parameters['Window size']) 
 
 # [PERFORM PREDICTIONS]
 #==============================================================================
@@ -110,42 +112,90 @@ X_specials, _ = PP.timeseries_labeling(specials, parameters['Window size'])
 print('''Perform prediction using the loaded model
 ''')
 
-# predict using pretrained model
+# generate input windows for predictions
 #------------------------------------------------------------------------------ 
-predictions_inputs = [X_extractions, X_specials]
+predictions_inputs = [X_times, X_extractions, X_specials]
+last_timepoints = times.tail(parameters['Window size'])
+last_extractions = extractions.tail(parameters['Window size'])
+last_special = specials.tail(parameters['Window size'])
+last_windows = [np.reshape(last_timepoints, (1, parameters['Window size'], 1)),
+                np.reshape(last_extractions, (1, parameters['Window size'], 10)),   
+                np.reshape(last_special, (1, parameters['Window size'], 1))]
+
+# perform prediction with selected model
+#------------------------------------------------------------------------------
 probability_vectors = model.predict(predictions_inputs)
-expected_extractions = [[1 if x > 0.5 else 0 for x in sb] for sb in probability_vectors[0]]
-expected_special = np.argmax(probability_vectors[1], axis=-1).reshape(-1, 1)
+next_prob_vectors = model.predict(last_windows)
+
+# create list of expected extractions and their probility vector
+#------------------------------------------------------------------------------
+expected_extractions = []
+next_expected_extractions = []
+for vector in probability_vectors[0]:
+    super_vector = [i+1 for i, x in enumerate(vector) if x in sorted(vector, reverse=True)[:10]]    
+    expected_extractions.append(super_vector)                      
+expected_special = np.argmax(probability_vectors[1], axis=-1).reshape(-1, 1) + 1
+
+for vector in next_prob_vectors[0]:
+    super_vector = [i+1 for i, x in enumerate(vector) if x in sorted(vector, reverse=True)[:10]]    
+    next_expected_extractions.append(super_vector)                      
+next_expected_special = np.argmax(next_prob_vectors[1], axis=-1).reshape(-1, 1) + 1
 
 # synchronize the window of timesteps with the predictions
 #------------------------------------------------------------------------------ 
-sync_expected_extraction = {f'N.{i+1}' : [] for i in range(10)}
-sync_expected_special = []
+sync_ext_vectors = {f'Probability of {i+1} in extraction' : [] for i in range(20)}
+sync_ext_values = {f'Predicted N.{i+1}' : [] for i in range(10)}
+sync_sp_vectors = {f'Probability of {i+1} as special' : [] for i in range(20)}
+sync_sp_values = []
 
 for ts in range(parameters['Window size']):
-    for N in sync_expected_extraction.keys():
-        sync_expected_extraction[N].append('')       
-    sync_expected_special.append('') 
+    for N in sync_ext_vectors.keys():
+        sync_ext_vectors[N].append('')
+    for N in sync_ext_values.keys(): 
+        sync_ext_values[N].append('')
+    for N in sync_sp_vectors.keys(): 
+        sync_sp_vectors[N].append('')
+    sync_sp_values.append('') 
 
-for x, y in zip(probability_vectors[0], probability_vectors[1]):
-    for N in list(sync_expected_extraction.keys())[:-1]:
-        sync_expected_extraction[N].append(x)    
-    sync_expected_special.append(y)     
+for x, y, s, z in zip(probability_vectors[0], probability_vectors[1], expected_extractions, expected_special):
+    for i, N in enumerate(sync_ext_vectors.keys()):
+        sync_ext_vectors[N].append(x[i])
+    for i, N in enumerate(sync_ext_values.keys()): 
+        sync_ext_values[N].append(s[i]) 
+    for i, N in enumerate(sync_sp_vectors.keys()): 
+        sync_sp_vectors[N].append(y[i])    
+    sync_sp_values.append(z) 
 
+for x, y, s, z in zip(next_prob_vectors[0], next_prob_vectors[1], next_expected_extractions, next_expected_special):
+    for i, N in enumerate(sync_ext_vectors.keys()):
+        sync_ext_vectors[N].append(x[i])
+    for i, N in enumerate(sync_ext_values.keys()): 
+        sync_ext_values[N].append(s[i]) 
+    for i, N in enumerate(sync_sp_vectors.keys()): 
+        sync_sp_vectors[N].append(y[i])    
+    sync_sp_values.append(z) 
+    
 
 # add column with prediction to dataset
 #------------------------------------------------------------------------------
+    timeseries.loc[len(timeseries.index)] = None
+    timeseries['extraction'] = original_names
+    timeseries['predicted extraction'] = sync_expected_color    
+    df_probability = pd.DataFrame(sync_expected_vector)
+    df_merged = pd.concat([timeseries, df_probability], axis=1)  
 
-# for key, item in sync_expected_extraction.items():
-#     df_predictions[f'predicted {key}'] = sync_expected_extraction[key]
-# df_predictions['predicted special'] = sync_expected_special
-# for key, vector in sync_expected_vector.items():      
-#     for vec in vector:
-#         if len(vec) > 0:
-#             for i in range(vec.shape[0]):            
-#                 column_name = f'Probability of "{i+1}" at {key}'
-#                 df_vectors[column_name] = item[i]
-            
+# add column with prediction to a new dataset and merge it with the input predictions
+#------------------------------------------------------------------------------
+df_forecast = pd.DataFrame()
+for key, item in sync_ext_values.items():
+    df_forecast[key] = item
+df_forecast['predicted special'] = sync_sp_values    
+for key, item in sync_ext_vectors.items():
+    df_forecast[key] = item
+for key, item in sync_sp_vectors.items():
+    df_forecast[key] = item
+
+df_merge = pd.concat([df_predictions, df_forecast], axis=1)
 
 # print console report
 #------------------------------------------------------------------------------ 
@@ -156,22 +206,21 @@ Next predicted special number: {expected_special[-1]}
 -------------------------------------------------------------------------------
 ''')
 print('Probability vector from softmax (%):')
-for i, (x, y) in enumerate(sync_expected_extraction.items()):
-    pass
-    #print(f'{x} = {round((next_prob_vector[0,0,i] * 100), 4)}')
+for i, (x, y) in enumerate(sync_ext_vectors.items()):    
+    print(f'{x} = {round((y[-1] * 100), 3)}')
 
 # [SAVE FILES]
 #==============================================================================
 # Save the trained preprocessing systems (normalizer and encoders) for further use 
 #==============================================================================
-print('''Saving WFL prediction file
+print('''
+-------------------------------------------------------------------------------
+Saving WFL prediction file
+-------------------------------------------------------------------------------
 ''')
 
-file_loc = os.path.join(GlobVar.fc_path, 'WFL_predictions.xlsx')  
-writer = pd.ExcelWriter(file_loc, engine='xlsxwriter')
-df_predictions.to_excel(writer, sheet_name='predictions', index=False)
-writer.close()
-
+file_loc = os.path.join(GlobVar.fc_path, 'WFL_predictions.csv')         
+df_merge.to_csv(file_loc, index=False, sep = ';', encoding = 'utf-8')
 
 
 
