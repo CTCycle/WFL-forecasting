@@ -48,7 +48,7 @@ else:
 df_predictions.drop(columns=['sum extractions', 'mean extractions'], inplace=True)
 df_predictions.reset_index(inplace=True)
 
-# Load model
+# Load pretrained model and its parameters
 #------------------------------------------------------------------------------
 trainworker = ModelTraining(device = cnf.training_device) 
 model = trainworker.load_pretrained_model(GlobVar.model_path)
@@ -58,15 +58,13 @@ model.summary(expand_nested=True)
 
 # Load scikit-learn normalizer and one-hot encoders
 #------------------------------------------------------------------------------
-encoder_path = os.path.join(load_path, 'preprocessed data', 'OHE_encoder_extractions.pkl')
+encoder_path = os.path.join(load_path, 'preprocessed data', 'MLB_encoder_extractions.pkl')
 with open(encoder_path, 'rb') as file:
     encoder_ext = pickle.load(file)
 encoder_path = os.path.join(load_path, 'preprocessed data',  'OHE_encoder_special.pkl')
 with open(encoder_path, 'rb') as file:
     encoder_sp = pickle.load(file)
-encoder_path = os.path.join(load_path, 'preprocessed data',  'normalizer.pkl')
-with open(encoder_path, 'rb') as file:
-    normalizer = pickle.load(file)
+
 
 # [MAPPING AND ENCODING]
 #==============================================================================
@@ -174,15 +172,6 @@ for x, y, s, z in zip(next_prob_vectors[0], next_prob_vectors[1], next_expected_
     for i, N in enumerate(sync_sp_vectors.keys()): 
         sync_sp_vectors[N].append(y[i])    
     sync_sp_values.append(z) 
-    
-
-# add column with prediction to dataset
-#------------------------------------------------------------------------------
-    timeseries.loc[len(timeseries.index)] = None
-    timeseries['extraction'] = original_names
-    timeseries['predicted extraction'] = sync_expected_color    
-    df_probability = pd.DataFrame(sync_expected_vector)
-    df_merged = pd.concat([timeseries, df_probability], axis=1)  
 
 # add column with prediction to a new dataset and merge it with the input predictions
 #------------------------------------------------------------------------------

@@ -260,7 +260,6 @@ training = model.fit(x=train_model_inputs, y=train_model_outputs, batch_size=cnf
                      validation_data=validation_data, epochs = cnf.epochs, verbose=1, shuffle=False, 
                      callbacks = callbacks, workers = 6, use_multiprocessing=True)
 
-
 # save model data and parameters in txt files
 #------------------------------------------------------------------------------
 parameters = {'Number of train samples' : train_samples,

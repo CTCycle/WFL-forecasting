@@ -18,14 +18,7 @@ from sklearn.preprocessing import label_binarize
 #==============================================================================
 class RealTimeHistory(keras.callbacks.Callback):
     
-    """ 
-    A class including the callback to show a real time plot of the training history. 
       
-    Methods:
-        
-    __init__(plot_path): initializes the class with the plot savepath       
-    
-    """   
     def __init__(self, plot_path, validation=True):        
         super().__init__()
         self.plot_path = plot_path
@@ -301,7 +294,21 @@ class ModelTraining:
             print()
     
     #========================================================================== 
-    def model_parameters(self, parameters_dict, savepath): 
+    def model_parameters(self, parameters_dict, savepath):
+
+        '''
+        Saves the model parameters to a JSON file. The parameters are provided 
+        as a dictionary and are written to a file named 'model_parameters.json' 
+        in the specified directory.
+
+        Keyword arguments:
+            parameters_dict (dict): A dictionary containing the parameters to be saved.
+            savepath (str): The directory path where the parameters will be saved.
+
+        Returns:
+            None       
+
+        '''
         path = os.path.join(savepath, 'model_parameters.json')      
         with open(path, 'w') as f:
             json.dump(parameters_dict, f) 
@@ -309,12 +316,28 @@ class ModelTraining:
     # sequential model as generator with Keras module
     #========================================================================== 
     def load_pretrained_model(self, path, load_parameters=True):
-        
+
+        '''
+        Load pretrained keras model (in folders) from the specified directory. 
+        If multiple model directories are found, the user is prompted to select one,
+        while if only one model directory is found, that model is loaded directly.
+        If `load_parameters` is True, the function also loads the model parameters 
+        from the target .json file in the same directory. 
+
+        Keyword arguments:
+            path (str): The directory path where the pretrained models are stored.
+            load_parameters (bool, optional): If True, the function also loads the 
+                                              model parameters from a JSON file. 
+                                              Default is True.
+
+        Returns:
+            model (keras.Model): The loaded Keras model.
+
+        '''        
         model_folders = []
         for entry in os.scandir(path):
             if entry.is_dir():
                 model_folders.append(entry.name)
-
         if len(model_folders) > 1:
             model_folders.sort()
             index_list = [idx + 1 for idx, item in enumerate(model_folders)]     
@@ -325,19 +348,18 @@ class ModelTraining:
             print()               
             while True:
                 try:
-                    dir_index = int(input('Type the model index to select it: '))
+                    dir_index = int(input('Select the pretrained model: '))
                     print()
                 except:
                     continue
                 break                         
             while dir_index not in index_list:
                 try:
-                    dir_index = int(input('Input is not valid! Try again: '))
+                    dir_index = int(input('No valid model selected! Try again: '))
                     print()
                 except:
                     continue
             self.model_path = os.path.join(path, model_folders[dir_index - 1])
-
         elif len(model_folders) == 1:
             self.model_path = os.path.join(path, model_folders[0])            
         

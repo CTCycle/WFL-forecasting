@@ -26,7 +26,7 @@ class UserOperations:
     #==========================================================================
     def menu_selection(self, menu):
         
-        """        
+        '''       
         menu_selection(menu)
         
         Presents a menu to the user and returns the selected option.
@@ -39,7 +39,7 @@ class UserOperations:
         Returns:            
             op_sel (int): The selected option number.
         
-        """        
+        '''       
         indexes = [idx + 1 for idx, val in enumerate(menu)]
         for key, value in menu.items():
             print('{0} - {1}'.format(key, value))       
