@@ -1,6 +1,5 @@
 import os
 import sys
-import numpy as np
 import pandas as pd
 import pickle
 from sklearn.model_selection import TimeSeriesSplit
@@ -77,8 +76,7 @@ train_time = train_time.drop(drop_cols, axis = 1)
 #------------------------------------------------------------------------------
 X_train_ext, Y_train_ext = PP.timeseries_labeling(train_ext, cnf.window_size)
 X_train_special, Y_train_special = PP.timeseries_labeling(train_special, cnf.window_size)     
-X_train_time, _ = PP.timeseries_labeling(train_time, cnf.window_size)
-   
+X_train_time, _ = PP.timeseries_labeling(train_time, cnf.window_size)   
  
 # [ONE HOT ENCODE THE LABELS]
 #==============================================================================
@@ -171,10 +169,6 @@ Learning rate:             {cnf.learning_rate}
 -------------------------------------------------------------------------------  
 ''')
 
-# initialize real time plot callback
-#------------------------------------------------------------------------------
-RTH_callback = RealTimeHistory(model_savepath, validation=cnf.use_test_data)
-
 # define k fold strategy
 #------------------------------------------------------------------------------
 kfold = TimeSeriesSplit(n_splits=cnf.k_fold)
@@ -183,8 +177,9 @@ kfold = TimeSeriesSplit(n_splits=cnf.k_fold)
 #------------------------------------------------------------------------------
 model_scores = []
 for train, test in kfold.split(X_train_ext):
+    RTH_callback = RealTimeHistory(model_savepath, validation=cnf.use_test_data)
     train_model_inputs = [X_train_time[train], X_train_ext[train], X_train_special[train]]
-    train_model_outputs = [Y_train_ext_OHE[train], Y_train_special_OHE[train]]
+    train_model_outputs = [Y_train_ext_OHE[train], Y_train_special_OHE[train]]    
     test_data = [[X_train_time[test], X_train_ext[test], X_train_special[test]],
                  [Y_train_ext_OHE[test], Y_train_special_OHE[test]]]    
     training = model.fit(x=train_model_inputs, y=train_model_outputs, batch_size=cnf.batch_size, 
