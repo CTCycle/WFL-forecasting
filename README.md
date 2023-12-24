@@ -15,7 +15,7 @@ Run the WLF_launcher.py file to launch the script and use the main menu to navig
 
 **3) Pretrain WFL model:** Standard pretraining of the WFL forecast model using prefetched data
 
-**4) Pretrain WFL model 8k-fold training):** Iterative k-fold pretraining of the WFL forecast model using prefetched data
+**4) Pretrain WFL model (k-fold training):** Iterative k-fold pretraining of the WFL forecast model using prefetched data
 
 **5) Predict next extraction:** Predict the next coming extraction using the pretrained model
 
@@ -24,22 +24,39 @@ Run the WLF_launcher.py file to launch the script and use the main menu to navig
 ### Configurations
 The configurations.py file allows to change the script configuration. The following parameters are available:
 
+
+**Settings for training performance and monitoring options:**
 - `generate_model_graph:` generate and save 2D model graph (as .png file)
 - `use_mixed_precision:` whether or not to use mixed precision for faster training (mix float16/float32)
 - `use_tensorboard:` activate or deactivate tensorboard logging
 - `XLA_acceleration:` use of linear algebra acceleration for faster training 
+
+**Settings for pretraining parameters:**
 - `training_device:` select the training device (CPU or GPU)
 - `epochs:` number of training iterations
 - `learning_rate:` learning rate of the model during training
 - `batch_size:` size of batches to be fed to the model during training
-- `embedding_size:` embedding dimensions (valid for both models)
+- `embedding_sequence:` embedding dimensions for the number sequences
+- `embedding_special:` embedding dimensions for the special numbers
+- `kernel_size:` embedding dimensions for the special numbers
+- `k_fold:` number of k-fold splits (k-fold training)
+- `k_epochs:` number of epochs for each k-fold (k-fold training)
+
+**Settings for data preprocessing:**
 - `use_test_data:` whether or not to use test data
 - `invert_test:` test data placement (True to set last points as test data)
 - `data_size:` fraction of total available data to use
 - `test_size:` fraction of data to leave as test data
 - `window_size:` length of the input timeseries window
-- `output_size:` number of next points to predict (output sequence)
+- `save_files:` decide whether or not to save preprocessed data
 - `predictions_size:` number of timeseries points to take for the predictions inputs
+
+**Settings for data collection and predictions:**
+- `predictions_size:` number of samples to collect from the dataset tail to generate the prediction dataset
+- `headless:` use the chromedriver in headless mode (no GUI)
+- `current_year:` current year (for data scraping purposes)
+- `credentials:` username and password to connect to xamig.com
+
 
 ### Requirements
 This application has been developed and tested using the following dependencies (Python 3.10.12):
@@ -57,3 +74,9 @@ This application has been developed and tested using the following dependencies 
 - `webdriver-manager==4.0.1`
 
 These dependencies are specified in the provided `requirements.txt` file to ensure full compatibility with the application. 
+
+## License
+This project is licensed under the terms of the MIT license. See the LICENSE file for details.
+
+## Disclaimer
+This project is for educational purposes only. It should not be used as a way to make easy money, since the model won't be able to accurately forecast numbers merely based on previous observations!

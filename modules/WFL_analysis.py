@@ -20,7 +20,7 @@ if __name__ == '__main__':
 #------------------------------------------------------------------------------
 from modules.components.data_classes import TimeSeriesAnalysis
 import modules.global_variables as GlobVar
-import modules.configurations as cnf
+import configurations as cnf
 
 # [LOAD DATASETS]
 #==============================================================================

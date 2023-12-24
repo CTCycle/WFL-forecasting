@@ -18,7 +18,7 @@ if __name__ == '__main__':
 from modules.components.scraper_classes import WebDriverToolkit, XamigScraper
 from modules.components.data_classes import PreProcessing
 import modules.global_variables as GlobVar
-import modules.configurations as cnf
+import configurations as cnf
 
 # [CONNECT TO XAMIG AND EXTRACT DATA]
 #==============================================================================
