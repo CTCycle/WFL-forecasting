@@ -18,7 +18,7 @@ if __name__ == '__main__':
 
 # import modules and components
 #------------------------------------------------------------------------------
-from modules.components.data_classes import TimeSeriesAnalysis
+from modules.components.data_assets import TimeSeriesAnalysis
 import modules.global_variables as GlobVar
 import configurations as cnf
 

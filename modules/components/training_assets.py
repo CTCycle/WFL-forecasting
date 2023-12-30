@@ -7,14 +7,14 @@ import tensorflow as tf
 from tensorflow import keras
 from keras.models import Model
 from keras.layers import Dense, Dropout, LSTM, BatchNormalization, Conv2D, MaxPooling2D
-from keras.layers import Embedding, Reshape, Input, Concatenate, MultiHeadAttention
+from keras.layers import Embedding, Reshape, Input, Concatenate, Add, MultiHeadAttention
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.preprocessing import label_binarize
 
 
 # [CALLBACK FOR REAL TIME TRAINING MONITORING]
 #==============================================================================
-#==============================================================================
+# Real time monitoring callback
 #==============================================================================
 class RealTimeHistory(keras.callbacks.Callback):
     
@@ -72,13 +72,72 @@ class RealTimeHistory(keras.callbacks.Callback):
             plt.savefig(fig_path, bbox_inches = 'tight', format = 'jpeg', dpi = 300)
             plt.close()
                   
+# [CUSTOM LOSS]
+#==============================================================================
+# Multiclass model for training
+#==============================================================================
+class WFLossFunction(tf.keras.losses.Loss):
 
-# Class for preprocessing tabular data prior to GAN training 
+    '''
+    Custom loss function for a TensorFlow/Keras model with additional mean difference penalty.
+    This loss function combines a binary cross-entropy term with a penalty term based on the 
+    absolute difference between the mean of predicted values and the mean of true values.
+
+    Keyword Arguments:
+        epsilon (float, optional): A hyperparameter controlling the strength of 
+                                   the mean difference penalty. Defaults to 0.1.    
+    '''
+
+    def __init__(self, epsilon=0.1):        
+        super().__init__()
+        self.binarycross = keras.losses.BinaryCrossentropy()
+        self.epsilon = epsilon
+
+    def call(self, y_true, y_pred): 
+
+        '''
+        Computes the total loss using binary cross-entropy and mean difference penalty.
+
+        Parameters:
+            y_true (tf.Tensor): True labels.
+            y_pred (tf.Tensor): Predicted labels.
+
+        Returns:
+            tf.Tensor: Total loss.
+
+        '''
+        bc_loss = self.binarycross(y_true, y_pred)
+        y_true = tf.cast(y_true, dtype=tf.float32)     
+        mean_diff_loss = tf.abs(tf.reduce_mean(tf.round(y_pred)) - tf.reduce_mean(y_true))
+        total_loss = bc_loss + (mean_diff_loss * self.epsilon)
+        
+        return total_loss
+
+
+# [DEEP LEARNING MODEL]
 #==============================================================================
-#==============================================================================
+# Multiclass model for training
 #==============================================================================
 class MultiSeqWFL:
 
+    '''
+    MultiSeqWFL - A custom model for multi-sequence time-series forecasting.
+
+    Keyword Arguments:
+        learning_rate (float): The learning rate for the optimizer.
+        window_size (int): The size of the input window for the time series.
+        time_embedding (int): The dimension of the time embedding.
+        embedding_seq (int): The dimension of the sequence embedding.
+        embedding_special (int): The dimension of the special number embedding.
+        kernel_size (int): The size of the convolutional kernel.
+        seed (int, optional): The seed for random initialization. Defaults to 42.
+        XLA_state (bool, optional): Enable or disable XLA (Accelerated Linear Algebra) compilation. Defaults to False.
+
+    Returns:
+        tf.keras.Model: The compiled MultiSeqWFL model for multi-sequence time-series forecasting
+                        (using method build() to compile the full model)
+
+    '''
     def __init__(self, learning_rate, window_size, time_embedding, embedding_seq, 
                  embedding_special, kernel_size, seed=42, XLA_state=False):
 
@@ -102,13 +161,13 @@ class MultiSeqWFL:
         embedding = Embedding(input_dim=18, output_dim=self.time_embedding)(sequence_input)               
         reshape = Reshape((self.window_size, -1))(embedding)
         #----------------------------------------------------------------------                         
-        lstm1 = LSTM(32, use_bias=True, return_sequences=True, activation='tanh', 
+        lstm1 = LSTM(64, use_bias=True, return_sequences=True, activation='tanh', 
                      kernel_initializer='glorot_uniform', dropout=0.2)(reshape)                
-        lstm2 = LSTM(64, use_bias=True, return_sequences=False, activation='tanh', 
+        lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', 
                      kernel_initializer='glorot_uniform', dropout=0.2)(lstm1)        
         bnorm = BatchNormalization()(lstm2)
         #----------------------------------------------------------------------
-        output = Dense(64, kernel_initializer='he_uniform', activation='relu')(bnorm)
+        output = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm)
         #----------------------------------------------------------------------
         self.time_encoder = Model(inputs=sequence_input, outputs=output)
 
@@ -129,13 +188,13 @@ class MultiSeqWFL:
         maxpool2 = MaxPooling2D()(conv2)           
         #----------------------------------------------------------------------                         
         reshape = Reshape((maxpool2.shape[1], maxpool2.shape[2] * maxpool2.shape[3]))(maxpool2)    
-        lstm1 = LSTM(256, use_bias=True, return_sequences=True, kernel_initializer='glorot_uniform',
+        lstm1 = LSTM(128, use_bias=True, return_sequences=True, kernel_initializer='glorot_uniform',
                      activation='tanh', dropout=0.2)(reshape)                
         lstm2 = LSTM(256, use_bias=True, return_sequences=False, kernel_initializer='glorot_uniform',
                      activation='tanh', dropout=0.2)(lstm1)        
         bnorm = BatchNormalization()(lstm2)
         #----------------------------------------------------------------------
-        output = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm)
+        output = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm)
         #----------------------------------------------------------------------
         self.sequence_encoder = Model(inputs=sequence_input, outputs=output)
 
@@ -150,11 +209,11 @@ class MultiSeqWFL:
         #----------------------------------------------------------------------         
         lstm1 = LSTM(64, use_bias=True, return_sequences=True, kernel_initializer='glorot_uniform',
                      activation='tanh', dropout=0.2)(reshape)                
-        lstm2 = LSTM(64, use_bias=True, return_sequences=False, kernel_initializer='glorot_uniform',
+        lstm2 = LSTM(128, use_bias=True, return_sequences=False, kernel_initializer='glorot_uniform',
                      activation='tanh', dropout=0.2)(lstm1)        
         bnorm = BatchNormalization()(lstm2)
         #----------------------------------------------------------------------
-        output = Dense(32, kernel_initializer='he_uniform', activation='relu')(bnorm)
+        output = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm)
         #----------------------------------------------------------------------
         self.specialnum_encoder = Model(inputs=special_input, outputs=output)
 
@@ -169,12 +228,12 @@ class MultiSeqWFL:
         #----------------------------------------------------------------------
         concat = Concatenate()([time_input, sequence_input, special_input])        
         bnorm1 = BatchNormalization()(concat)
-        densecat1 = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm1)
+        densecat1 = Dense(512, kernel_initializer='he_uniform', activation='relu')(bnorm1)
         bnorm2 = BatchNormalization()(densecat1) 
-        densecat2 = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm2)
+        densecat2 = Dense(384, kernel_initializer='he_uniform', activation='relu')(bnorm2)
         bnorm3 = BatchNormalization()(densecat2) 
         #----------------------------------------------------------------------           
-        output = Dense(96, kernel_initializer='he_uniform', activation='relu')(bnorm3)
+        output = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm3)
         #----------------------------------------------------------------------    
         self.concatenated_encoder = Model(inputs=[time_input, sequence_input, special_input], outputs=output)                  
 
@@ -186,7 +245,7 @@ class MultiSeqWFL:
         sequence_input = Input(shape=(self.sequence_encoder.output_shape[1:]))
         concat_input = Input(shape=(self.concatenated_encoder.output_shape[1:]))
         #----------------------------------------------------------------------
-        concat = Concatenate()([sequence_input, concat_input])           
+        concat = Add()([sequence_input, concat_input])           
         dense1 = Dense(256, kernel_initializer='he_uniform', activation='relu')(concat)   
         bnorm = BatchNormalization()(dense1)              
         dense2 = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm)  
@@ -206,7 +265,7 @@ class MultiSeqWFL:
         special_input = Input(shape=(self.specialnum_encoder.output_shape[1:]))
         concat_input = Input(shape=(self.concatenated_encoder.output_shape[1:]))        
         #----------------------------------------------------------------------
-        concat = Concatenate()([special_input, concat_input])          
+        concat = Add()([special_input, concat_input])          
         dense = Dense(64, kernel_initializer='he_uniform', activation='relu')(concat)
         bnorm = BatchNormalization()(dense)   
         #----------------------------------------------------------------------                 
@@ -216,7 +275,6 @@ class MultiSeqWFL:
                                         outputs=output, name='special_decoder')
 
         return self.specialnum_decoder
-
 
     #--------------------------------------------------------------------------
     def build(self):
@@ -244,7 +302,7 @@ class MultiSeqWFL:
         outputs = [sequence_output, special_output]
         model = Model(inputs = inputs, outputs = outputs, name = 'MultiSeqWFL_model')    
         opt = keras.optimizers.Adam(learning_rate=self.learning_rate)
-        loss_ext = keras.losses.BinaryCrossentropy()
+        loss_ext = WFLossFunction()
         loss_special = keras.losses.CategoricalCrossentropy(from_logits=False)
         metric_ext = keras.metrics.AUC(multi_label=True)
         metric_special = keras.metrics.CategoricalAccuracy()
@@ -256,12 +314,24 @@ class MultiSeqWFL:
         return model             
 
 
-# define model class
+# [MODEL TRAINING]
 #==============================================================================
+# Model training logic
 #==============================================================================
-#==============================================================================
-class ModelTraining:    
-       
+class ModelTraining:
+
+    '''
+    ModelTraining - A class for configuring the device and settings for model training.
+
+    Keyword Arguments:
+        device (str):                         The device to be used for training. 
+                                              Should be one of ['default', 'GPU', 'CPU'].
+                                              Defaults to 'default'.
+        seed (int, optional):                 The seed for random initialization. Defaults to 42.
+        use_mixed_precision (bool, optional): Whether to use mixed precision for improved training performance.
+                                              Defaults to False.
+    
+    '''           
     def __init__(self, device = 'default', seed=42, use_mixed_precision=False):                     
         np.random.seed(seed)
         tf.random.set_seed(seed)         
@@ -293,7 +363,7 @@ class ModelTraining:
             print('-------------------------------------------------------------------------------')
             print()
     
-    #========================================================================== 
+    #--------------------------------------------------------------------------
     def model_parameters(self, parameters_dict, savepath):
 
         '''
@@ -314,7 +384,7 @@ class ModelTraining:
             json.dump(parameters_dict, f) 
           
     # sequential model as generator with Keras module
-    #========================================================================== 
+    #--------------------------------------------------------------------------
     def load_pretrained_model(self, path, load_parameters=True):
 
         '''
@@ -372,18 +442,37 @@ class ModelTraining:
         return model   
 
 
-# define class for trained model validation and data comparison
+# [MODEL VALIDATION]
 #============================================================================== 
-#==============================================================================
+# model validation logic
 #==============================================================================
 class ModelValidation:
 
+    '''
+    ModelValidation - A class for model validation and performance evaluation.
+
+    Keyword arguments:
+        model (tf.keras.Model): The trained model for validation.
+
+    '''
     def __init__(self, model):      
         self.model = model       
     
     # comparison of data distribution using statistical methods 
-    #==========================================================================     
-    def WFL_confusion(self, Y_real, predictions, name, path, dpi=400):         
+    #--------------------------------------------------------------------------     
+    def WFL_confusion(self, Y_real, predictions, name, path, dpi=400):
+
+        '''
+        Generate and save a confusion matrix plot for model predictions.
+
+        Keyword arguments:
+            Y_real (array-like): True labels.
+            predictions (array-like): Predicted labels.
+            name (str): Name to be used in the saved file.
+            path (str): Directory path to save the plot.
+            dpi (int, optional): Dots per inch for the saved plot. Defaults to 400.
+
+        '''         
         cm = confusion_matrix(Y_real, predictions)    
         fig, ax = plt.subplots()        
         sns.heatmap(cm, annot=True, fmt='d', ax=ax, cmap=plt.cm.Blues, cbar=False)        
@@ -399,9 +488,20 @@ class ModelValidation:
         plt.savefig(plot_loc, bbox_inches='tight', format='jpeg', dpi = dpi)
 
     # comparison of data distribution using statistical methods 
-    #==========================================================================
+    #--------------------------------------------------------------------------
     def plot_multi_ROC(Y_real, predictions, class_dict, path, dpi):
-    
+
+        '''
+        Generate and save a multi-class ROC curve plot for model predictions.
+
+        Keyword arguments:
+            Y_real (array-like): True labels.
+            predictions (array-like): Predicted labels.
+            class_dict (dict): A dictionary mapping class indices to class labels.
+            path (str): Directory path to save the plot.
+            dpi (int): Dots per inch for the saved plot.
+
+        '''    
         Y_real_bin = label_binarize(Y_real, classes=list(class_dict.values()))
         n_classes = Y_real_bin.shape[1]        
         fpr = dict()
@@ -412,8 +512,7 @@ class ModelValidation:
             roc_auc[i] = auc(fpr[i], tpr[i])    
         plt.figure()
         for i in range(n_classes):
-            plt.plot(fpr[i], tpr[i], label='ROC curve of class {0} (area = {1:0.2f})'
-                 ''.format(list(class_dict.keys())[i], roc_auc[i]))
+            plt.plot(fpr[i], tpr[i], label=f'ROC curve of {list(class_dict.keys())[i]} (area = {roc_auc[i]:0.2f})')
         plt.plot([0, 1], [0, 1], 'k--')
         plt.xlim([0.0, 1.0])
         plt.ylim([0.0, 1.05])
