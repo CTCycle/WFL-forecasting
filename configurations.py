@@ -42,6 +42,6 @@ predictions_size = 1000
 #------------------------------------------------------------------------------
 headless = True
 current_year = 2023
-credentials = {'username' : 'st.gilles98@gmail.com',
-               'password' : 'Fg566wrùF'}
+credentials = {'username' : 'p',
+               'password' : 'p'}
 
