@@ -88,7 +88,7 @@ class WFLossFunction(tf.keras.losses.Loss):
                                    the mean difference penalty. Defaults to 0.1.    
     '''
 
-    def __init__(self, epsilon=0.1):        
+    def __init__(self, epsilon=1.0):        
         super().__init__()
         self.binarycross = keras.losses.BinaryCrossentropy()
         self.epsilon = epsilon
@@ -113,6 +113,201 @@ class WFLossFunction(tf.keras.losses.Loss):
         
         return total_loss
 
+# [TIME ENCODER]
+#==============================================================================
+# Custom time encoder
+#==============================================================================
+class TimeEncoder(keras.layers.Layer):
+    def __init__(self, window_size, embedding_dims):
+        super(TimeEncoder, self).__init__()
+        self.window_size = window_size
+        self.embedding_dims = embedding_dims
+        self.embedding = Embedding(input_dim=18, output_dim=self.embedding_dims)
+        self.reshape = Reshape((self.window_size, -1))
+        self.lstm1 = LSTM(64, use_bias=True, return_sequences=True, activation='tanh', 
+                          kernel_initializer='glorot_uniform', dropout=0.2)
+        self.lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', 
+                          kernel_initializer='glorot_uniform', dropout=0.2)        
+        self.dense = Dense(128, kernel_initializer='he_uniform', activation='relu')
+
+    # implement time encoding through call method  
+    #--------------------------------------------------------------------------    
+    def call(self, inputs):
+        layer = self.embedding(inputs)
+        layer = self.reshape(layer)
+        layer = self.lstm1(layer)
+        layer = self.lstm2(layer)        
+        output_layer = self.dense(layer)
+
+        return output_layer
+
+    # get configuration to print out structure
+    #--------------------------------------------------------------------------
+    def get_config(self):
+        config = {'window_size': self.window_size,
+                  'embedding_dims': self.embedding_dims}
+        base_config = super(TimeEncoder, self).get_config()
+
+        return dict(list(base_config.items()) + list(config.items()))
+
+# [SEQUENCE ENCODER]
+#==============================================================================
+# Custom sequence encoder
+#==============================================================================
+class SequenceEncoder(keras.layers.Layer):
+    def __init__(self, window_size, kernel_size, embedding_dims, seed=42):
+        super(SequenceEncoder, self).__init__()
+        self.window_size = window_size        
+        self.kernel_size = kernel_size
+        self.embedding_dims = embedding_dims
+        self.seed = seed
+        self.embedding = Embedding(input_dim=20, output_dim=embedding_dims)          
+        self.conv1 = Conv2D(128, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
+                            padding='same', activation='relu')
+        self.maxpool1 = MaxPooling2D() 
+        self.reshape = Reshape((-1, 128))        
+        self.lstm1 = LSTM(128, use_bias=True, return_sequences=True, activation='tanh', 
+                          kernel_initializer='glorot_uniform', dropout=0.2)
+        self.lstm2 = LSTM(256, use_bias=True, return_sequences=False, activation='tanh', 
+                          kernel_initializer='glorot_uniform', dropout=0.2)
+        self.BN = BatchNormalization()
+        self.dropout = Dropout(rate=0.2, seed=self.seed)
+        self.dense_output = Dense(256, kernel_initializer='he_uniform', activation='relu')
+
+    # implement sequence encoding through call method  
+    #--------------------------------------------------------------------------   
+    def call(self, inputs, training):
+        layer = self.embedding(inputs)        
+        layer = self.conv1(layer)
+        layer = self.maxpool1(layer)
+        layer = self.reshape(layer)       
+        layer = self.lstm1(layer)
+        layer = self.lstm2(layer)
+        layer = self.BN(layer, training)
+        layer = self.dropout(layer, training)
+        dense_output = self.dense_output(layer)
+
+        return dense_output 
+
+    # get configuration to print out structure
+    #--------------------------------------------------------------------------
+    def get_config(self):
+        config = {'window_size': self.window_size,
+                  'kernel_size': self.window_size,
+                  'embedding_dims': self.embedding_dims,
+                  'seed': self.seed}
+        base_config = super(SequenceEncoder, self).get_config()
+
+        return dict(list(base_config.items()) + list(config.items()))   
+
+# [SPECIAL ENCODER]
+#==============================================================================
+# Custom special number encoder
+#==============================================================================
+class SpecialEncoder(keras.layers.Layer):
+    def __init__(self, window_size, embedding_dims, seed=42):
+        super(SpecialEncoder, self).__init__()
+        self.window_size = window_size               
+        self.embedding_dims = embedding_dims
+        self.seed = seed
+        self.embedding = Embedding(input_dim=18, output_dim=self.embedding_dims)        
+        self.reshape = Reshape((-1, self.embedding_dims)) 
+        self.lstm1 = LSTM(64, use_bias=True, return_sequences=True, activation='tanh', 
+                          kernel_initializer='glorot_uniform', dropout=0.2)
+        self.lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', 
+                          kernel_initializer='glorot_uniform', dropout=0.2)
+        self.BN = BatchNormalization()        
+        self.dense_output = Dense(256, kernel_initializer='he_uniform', activation='relu')
+
+    # implement sequence encoding through call method  
+    #--------------------------------------------------------------------------    
+    def call(self, inputs, training):
+        layer = self.embedding(inputs)        
+        layer = self.reshape(layer)
+        layer = self.lstm1(layer)
+        layer = self.lstm2(layer)
+        layer = self.BN(layer, training)       
+        dense_output = self.dense_output(layer)
+
+        return dense_output
+
+    # get configuration to print out structure
+    #--------------------------------------------------------------------------
+    def get_config(self):
+        config = {'window_size': self.window_size,                 
+                  'embedding_dims': self.embedding_dims,
+                  'seed': self.seed}
+        base_config = super(SpecialEncoder, self).get_config()
+
+        return dict(list(base_config.items()) + list(config.items()))  
+      
+# [WFL DECODER]
+#==============================================================================
+# Custom cdecoder
+#==============================================================================
+class SequenceDecoder(keras.layers.Layer):
+    def __init__(self, seed=42):
+        super(SequenceDecoder, self).__init__()
+        self.seed = seed
+        self.add = Add()        
+        self.BN1 = BatchNormalization()  
+        self.BN2 = BatchNormalization()          
+        self.dense1 = Dense(256, kernel_initializer='he_uniform', activation='relu')
+        self.dense2 = Dense(128, kernel_initializer='he_uniform', activation='relu')
+        self.dense3 = Dense(64, kernel_initializer='he_uniform', activation='relu')        
+        self.seq_output = Dense(20, activation='sigmoid', dtype='float32')
+
+    # implement decoder through call method  
+    #--------------------------------------------------------------------------    
+    def call(self, encoder_seq, concat_output, training):
+        concat = self.add([encoder_seq, concat_output])       
+        sequence = self.dense1(concat)
+        sequence = self.BN1(sequence, training)
+        sequence = self.dense2(sequence)
+        sequence = self.BN2(sequence, training)
+        sequence = self.dense3(sequence)
+        sequence = self.seq_output(sequence)       
+
+        return sequence
+    
+    # get configuration to print out structure
+    #--------------------------------------------------------------------------
+    def get_config(self):
+        config = {'seed': self.seed}
+        base_config = super(SequenceDecoder, self).get_config()
+
+        return dict(list(base_config.items()) + list(config.items()))
+
+# [WFL DECODER]
+#==============================================================================
+# Custom cdecoder
+#==============================================================================
+class SpecialDecoder(keras.layers.Layer):
+    def __init__(self, seed=42):
+        super(SpecialDecoder, self).__init__()
+        self.seed = seed
+        self.add = Add()          
+        self.BN = BatchNormalization()  
+        self.dense = Dense(128, kernel_initializer='he_uniform', activation='relu')
+        self.special_output = Dense(20, activation='softmax', dtype='float32')        
+
+    # implement decoder through call method  
+    #--------------------------------------------------------------------------    
+    def call(self, encoder_special, concat_output, training):
+        concat = self.add([encoder_special, concat_output])       
+        special = self.dense(concat)
+        special = self.BN(special, training)     
+        special = self.special_output(special)       
+
+        return special
+    
+    # get configuration to print out structure
+    #--------------------------------------------------------------------------
+    def get_config(self):
+        config = {'seed': self.seed}
+        base_config = super(SpecialDecoder, self).get_config()
+
+        return dict(list(base_config.items()) + list(config.items()))
 
 # [DEEP LEARNING MODEL]
 #==============================================================================
@@ -140,7 +335,6 @@ class MultiSeqWFL:
     '''
     def __init__(self, learning_rate, window_size, time_embedding, embedding_seq, 
                  embedding_special, kernel_size, seed=42, XLA_state=False):
-
         self.num_features = 10
         self.num_stats = 2
         self.num_classes_ext = 11
@@ -152,157 +346,37 @@ class MultiSeqWFL:
         self.special_embedding = embedding_special
         self.kernel_size = kernel_size                       
         self.seed = seed       
-        self.XLA_state = XLA_state 
-
-    #--------------------------------------------------------------------------
-    def _time_encoder(self):        
+        self.XLA_state = XLA_state
+        self.time_encoder = TimeEncoder(window_size, time_embedding)
+        self.sequence_encoder = SequenceEncoder(window_size, time_embedding, seed)
+        self.special_encoder = SpecialEncoder(window_size, time_embedding, seed)           
+        self.sequence_decoder = SequenceDecoder(seed) 
+        self.special_decoder = SpecialDecoder(seed)  
+   
+    def build(self):     
         
-        sequence_input = Input(shape=(self.window_size, 1))        
-        embedding = Embedding(input_dim=18, output_dim=self.time_embedding)(sequence_input)               
-        reshape = Reshape((self.window_size, -1))(embedding)
-        #----------------------------------------------------------------------                         
-        lstm1 = LSTM(64, use_bias=True, return_sequences=True, activation='tanh', 
-                     kernel_initializer='glorot_uniform', dropout=0.2)(reshape)                
-        lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', 
-                     kernel_initializer='glorot_uniform', dropout=0.2)(lstm1)        
-        bnorm = BatchNormalization()(lstm2)
+        time_input = Input(shape=(self.window_size, 1))   
+        sequence_input = Input(shape=(self.window_size, self.num_features))   
+        special_input = Input(shape=(self.window_size, 1))        
         #----------------------------------------------------------------------
-        output = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm)
-        #----------------------------------------------------------------------
-        self.time_encoder = Model(inputs=sequence_input, outputs=output)
-
-        return self.time_encoder
-
-    #--------------------------------------------------------------------------
-    def _sequence_encoder(self):        
-        
-        sequence_input = Input(shape=(self.window_size, self.num_features))        
-        embedding = Embedding(input_dim=self.num_classes_ext, 
-                              output_dim=self.seq_embedding)(sequence_input)
-        #----------------------------------------------------------------------
-        conv1 = Conv2D(64, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
-                       padding='same', activation='relu')(embedding)  
-        maxpool1 = MaxPooling2D()(conv1)              
-        conv2 = Conv2D(128, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
-                       padding='same', activation='relu')(maxpool1)  
-        maxpool2 = MaxPooling2D()(conv2)           
-        #----------------------------------------------------------------------                         
-        reshape = Reshape((maxpool2.shape[1], maxpool2.shape[2] * maxpool2.shape[3]))(maxpool2)    
-        lstm1 = LSTM(128, use_bias=True, return_sequences=True, kernel_initializer='glorot_uniform',
-                     activation='tanh', dropout=0.2)(reshape)                
-        lstm2 = LSTM(256, use_bias=True, return_sequences=False, kernel_initializer='glorot_uniform',
-                     activation='tanh', dropout=0.2)(lstm1)        
-        bnorm = BatchNormalization()(lstm2)
-        #----------------------------------------------------------------------
-        output = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm)
-        #----------------------------------------------------------------------
-        self.sequence_encoder = Model(inputs=sequence_input, outputs=output)
-
-        return self.sequence_encoder
-    
-    #--------------------------------------------------------------------------
-    def _specialnum_encoder(self):  
-
-        special_input = Input(shape=(self.window_size, 1))         
-        embedding = Embedding(input_dim=self.num_classes_special, output_dim=self.special_embedding)(special_input)  
-        reshape = Reshape((self.window_size, -1))(embedding)       
-        #----------------------------------------------------------------------         
-        lstm1 = LSTM(64, use_bias=True, return_sequences=True, kernel_initializer='glorot_uniform',
-                     activation='tanh', dropout=0.2)(reshape)                
-        lstm2 = LSTM(128, use_bias=True, return_sequences=False, kernel_initializer='glorot_uniform',
-                     activation='tanh', dropout=0.2)(lstm1)        
-        bnorm = BatchNormalization()(lstm2)
-        #----------------------------------------------------------------------
-        output = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm)
-        #----------------------------------------------------------------------
-        self.specialnum_encoder = Model(inputs=special_input, outputs=output)
-
-        return self.specialnum_encoder
-
-    #--------------------------------------------------------------------------
-    def _concatenated_encoder(self):        
-
-        time_input = Input(shape=(self.time_encoder.output_shape[1:]))
-        sequence_input = Input(shape=(self.sequence_encoder.output_shape[1:]))
-        special_input = Input(shape=(self.specialnum_encoder.output_shape[1:]))
-        #----------------------------------------------------------------------
-        concat = Concatenate()([time_input, sequence_input, special_input])        
+        time_head = self.time_encoder(time_input)
+        sequence_head = self.sequence_encoder(sequence_input)
+        special_head = self.special_encoder(special_input)
+        concat = Concatenate()([time_head, sequence_head, special_head])        
         bnorm1 = BatchNormalization()(concat)
         densecat1 = Dense(512, kernel_initializer='he_uniform', activation='relu')(bnorm1)
         bnorm2 = BatchNormalization()(densecat1) 
         densecat2 = Dense(384, kernel_initializer='he_uniform', activation='relu')(bnorm2)
         bnorm3 = BatchNormalization()(densecat2) 
-        #----------------------------------------------------------------------           
-        output = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm3)
-        #----------------------------------------------------------------------    
-        self.concatenated_encoder = Model(inputs=[time_input, sequence_input, special_input], outputs=output)                  
-
-        return self.concatenated_encoder
-
-    #--------------------------------------------------------------------------
-    def _sequence_decoder(self):       
-        
-        sequence_input = Input(shape=(self.sequence_encoder.output_shape[1:]))
-        concat_input = Input(shape=(self.concatenated_encoder.output_shape[1:]))
-        #----------------------------------------------------------------------
-        concat = Add()([sequence_input, concat_input])           
-        dense1 = Dense(256, kernel_initializer='he_uniform', activation='relu')(concat)   
-        bnorm = BatchNormalization()(dense1)              
-        dense2 = Dense(128, kernel_initializer='he_uniform', activation='relu')(bnorm)  
-        bnorm2 = BatchNormalization()(dense2)              
-        dense3 = Dense(64, kernel_initializer='he_uniform', activation='relu')(bnorm2) 
-        #----------------------------------------------------------------------       
-        output = Dense(20, activation='sigmoid', dtype='float32')(dense3)        
-        #----------------------------------------------------------------------
-        self.sequence_decoder = Model(inputs=[sequence_input, concat_input], outputs=output,
-                                      name='sequence_decoder')
-
-        return self.sequence_decoder
-
-    #--------------------------------------------------------------------------
-    def _specialnum_decoder(self):        
-        
-        special_input = Input(shape=(self.specialnum_encoder.output_shape[1:]))
-        concat_input = Input(shape=(self.concatenated_encoder.output_shape[1:]))        
-        #----------------------------------------------------------------------
-        concat = Add()([special_input, concat_input])          
-        dense = Dense(64, kernel_initializer='he_uniform', activation='relu')(concat)
-        bnorm = BatchNormalization()(dense)   
-        #----------------------------------------------------------------------                 
-        output = Dense(self.num_classes_special, activation='softmax', dtype='float32')(bnorm)
-        #----------------------------------------------------------------------
-        self.specialnum_decoder = Model(inputs=[special_input, concat_input], 
-                                        outputs=output, name='special_decoder')
-
-        return self.specialnum_decoder
-
-    #--------------------------------------------------------------------------
-    def build(self):
-
-        time_encoder = self._time_encoder()
-        sequence_encoder = self._sequence_encoder()
-        special_encoder = self._specialnum_encoder()
-        concat_encoder = self._concatenated_encoder()      
-        sequence_decoder = self._sequence_decoder() 
-        special_decoder = self._specialnum_decoder() 
-        #----------------------------------------------------------------------
-        time_input = Input(shape=(self.window_size, 1))   
-        sequence_input = Input(shape=(self.window_size, self.num_features))   
-        special_input = Input(shape=(self.window_size, 1))        
-        #----------------------------------------------------------------------
-        time_head = time_encoder(time_input)
-        sequence_head = sequence_encoder(sequence_input)
-        special_head = special_encoder(special_input)        
-        concatenation = concat_encoder([time_head, sequence_head, special_head]) 
-        #----------------------------------------------------------------------
-        sequence_output = sequence_decoder([sequence_head, concatenation])
-        special_output = special_decoder([special_head, concatenation])
+        densecat3 = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm3)        
+        sequence_output = self.sequence_decoder(sequence_head, densecat3)
+        special_output = self.special_decoder(special_head, densecat3)
         #----------------------------------------------------------------------        
         inputs = [time_input, sequence_input, special_input]
         outputs = [sequence_output, special_output]
         model = Model(inputs = inputs, outputs = outputs, name = 'MultiSeqWFL_model')    
         opt = keras.optimizers.Adam(learning_rate=self.learning_rate)
-        loss_ext = WFLossFunction()
+        loss_ext = WFLossFunction(epsilon=1.0)
         loss_special = keras.losses.CategoricalCrossentropy(from_logits=False)
         metric_ext = keras.metrics.AUC(multi_label=True)
         metric_special = keras.metrics.CategoricalAccuracy()
@@ -388,7 +462,7 @@ class ModelTraining:
     def load_pretrained_model(self, path, load_parameters=True):
 
         '''
-        Load pretrained keras model (in folders) from the specified directory. 
+        Load pretrained keras model (saved in folder) from the specified directory. 
         If multiple model directories are found, the user is prompted to select one,
         while if only one model directory is found, that model is loaded directly.
         If `load_parameters` is True, the function also loads the model parameters 
