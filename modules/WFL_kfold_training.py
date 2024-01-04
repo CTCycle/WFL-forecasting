@@ -133,18 +133,21 @@ model_savepath = PP.model_savefolder(GlobVar.model_path, 'WFLMulti')
 trainworker = ModelTraining(device=cnf.training_device, seed=cnf.seed, 
                             use_mixed_precision=cnf.use_mixed_precision)
 
-# initialize, compile and print the summary of the captioning model
+# initialize model class
 #------------------------------------------------------------------------------
-model = WFLMultiSeq(cnf.learning_rate, cnf.window_size, cnf.embedding_time, 
-                    cnf.embedding_sequence, cnf.embedding_special, cnf.kernel_size, 
-                    seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
-model.compile()
-model.summary()
+modelframe = WFLMultiSeq(cnf.learning_rate, cnf.window_size, cnf.embedding_time, 
+                         cnf.embedding_sequence, cnf.embedding_special, cnf.kernel_size, 
+                         seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
+model = modelframe.build()
+model.summary(expand_nested=True)
 
-# generate graphviz plot fo the model layout
+# plot model graph
 #------------------------------------------------------------------------------
 if cnf.generate_model_graph == True:
-    model.plot_model(model_savepath)
+    plot_path = os.path.join(model_savepath, 'MultiSeqWFL_model.png')       
+    plot_model(model, to_file = plot_path, show_shapes = True, 
+               show_layer_names = True, show_layer_activations = True, 
+               expand_nested = True, rankdir = 'TB', dpi = 400)
 
 # [TRAINING WITH WFL]
 #==============================================================================
