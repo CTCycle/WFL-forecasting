@@ -5,7 +5,6 @@ import pandas as pd
 import pickle
 import tensorflow as tf
 from sklearn.preprocessing import OneHotEncoder, MultiLabelBinarizer
-from keras.utils.vis_utils import plot_model
 
 # set warnings
 #------------------------------------------------------------------------------
@@ -20,7 +19,7 @@ if __name__ == '__main__':
 # import modules and components
 #------------------------------------------------------------------------------
 from modules.components.data_assets import PreProcessing
-from modules.components.training_assets import MultiSeqWFL, RealTimeHistory, ModelTraining, ModelValidation
+from modules.components.training_assets import WFLMultiSeq, RealTimeHistory, ModelTraining, ModelValidation
 import modules.global_variables as GlobVar
 import configurations as cnf
 
@@ -186,27 +185,22 @@ if cnf.save_files==True:
 #==============================================================================
 print('''STEP 4 -----> Build the model and start training
 ''')
-
-# activate training framework and create model folder
-#------------------------------------------------------------------------------
+model_savepath = PP.model_savefolder(GlobVar.model_path, 'WFLMulti')
 trainworker = ModelTraining(device=cnf.training_device, seed=cnf.seed, 
                             use_mixed_precision=cnf.use_mixed_precision)
 
-# initialize model class
+# initialize, compile and print the summary of the captioning model
 #------------------------------------------------------------------------------
-modelframe = MultiSeqWFL(cnf.learning_rate, cnf.window_size, cnf.embedding_time, 
-                         cnf.embedding_sequence, cnf.embedding_special, cnf.kernel_size, 
-                         seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
-model = modelframe.build()
-model.summary(expand_nested=True)
+model = WFLMultiSeq(cnf.learning_rate, cnf.window_size, cnf.embedding_time, 
+                    cnf.embedding_sequence, cnf.embedding_special, cnf.kernel_size, 
+                    seed=cnf.seed, XLA_state=cnf.XLA_acceleration)
+model.compile()
+model.summary()
 
-# plot model graph
+# generate graphviz plot fo the model layout
 #------------------------------------------------------------------------------
 if cnf.generate_model_graph == True:
-    plot_path = os.path.join(model_savepath, 'MultiSeqWFL_model.png')       
-    plot_model(model, to_file = plot_path, show_shapes = True, 
-               show_layer_names = True, show_layer_activations = True, 
-               expand_nested = True, rankdir = 'TB', dpi = 400)
+    model.plot_model(model_savepath)
 
 # [TRAINING WITH WFL]
 #==============================================================================

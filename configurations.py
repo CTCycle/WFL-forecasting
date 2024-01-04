@@ -7,16 +7,16 @@ XLA_acceleration = False
 
 # Define variables for the training
 #------------------------------------------------------------------------------
-seed = 52
+seed = 76
 training_device = 'GPU'
-epochs = 500
-learning_rate = 0.001
-batch_size = 1000
+epochs = 600
+learning_rate = 0.0001
+batch_size = 1200
 
 # embedding and convolutions
 #------------------------------------------------------------------------------
 embedding_time = 64
-embedding_sequence = 128
+embedding_sequence = 96
 embedding_special = 64
 kernel_size = 6
 
@@ -24,9 +24,9 @@ kernel_size = 6
 #------------------------------------------------------------------------------
 use_test_data = True
 invert_test = False
-data_size = 0.5
-test_size = 0.1
-window_size = 60
+data_size = 0.8
+test_size = 0.2
+window_size = 40
 save_files = False
 
 # k fold training
@@ -42,6 +42,6 @@ predictions_size = 1000
 #------------------------------------------------------------------------------
 headless = True
 current_year = 2023
-credentials = {'username' : 'p',
-               'password' : 'p'}
+credentials = {'username' : 'st.gilles98@gmail.com',
+               'password' : 'Fg566wrùF'}
 
