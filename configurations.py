@@ -11,12 +11,12 @@ seed = 76
 training_device = 'GPU'
 epochs = 600
 learning_rate = 0.0001
-batch_size = 1660
+batch_size = 1200
 
 # embedding and convolutions
 #------------------------------------------------------------------------------
 embedding_time = 64
-embedding_sequence = 128
+embedding_sequence = 96
 embedding_special = 64
 kernel_size = 8
 
@@ -42,6 +42,6 @@ predictions_size = 1000
 #------------------------------------------------------------------------------
 headless = True
 current_year = 2023
-credentials = {'username' : 'st.gilles98@gmail.com',
-               'password' : 'Fg566wrùF'}
+credentials = {'username' : 'p',
+               'password' : 'p'}
 
