@@ -3,8 +3,8 @@
 ## Project description
 This project is about predicting the results of Win For Life lottery based on previous extractions. Win for Life is a lottery game where the top prize is a lifetime annuity. This means that if you win the top prize, you will receive a certain amount of money regularly for the rest of your life! In the Win for Life game, you need to choose 10 numbers out of 20 and a "Numerone" (special number). The minimum play is 10 numbers + 1 Numerone (special number) at the price of 1 or 2 EUR. There are 8 categories of winnings and you can win up to 3,000 euros per month for 20 years. The game has an extraction every hour from 7 am to 11 pm, and if your combination matches the drawn numbers, you win. The amount you win depends on how many numbers you match. 
 
-### MultiSeqWFL model
-The MultiSeqWFL is a neural network model developed to predict the next Win for Life extractions (sequence of 10 numbers plus the special number) based on the lottery history from 2013 to the current year. The model architecture is based on 3 different inputs, namely the time information (date and daytime), the 10-point extraction sequences and the special numer timeseries. 
+### WFLMultiSeq model
+The MultiSeqWFL is a neural network model developed to predict the next Win for Life extractions (sequence of 10 numbers plus the special number) based on the lottery history from 2013 to the current year. The model is constructed using three different encoder layers, each accepting a specific input (time informations, 10-point extraction sequences and the special numer timeseries. The encoders extract features from each input and their output is concatenated and further processed by an addition encoder layer. Two decoders are used to produce the two outputs of the model (the 10-number sequence and the special number), each of them accepting both the concatenation encoder and input encoder outputs.
 
 ## How to use
 Run the WLF_launcher.py file to launch the script and use the main menu to navigate the different options. The main menu will provide the user with the following options:
