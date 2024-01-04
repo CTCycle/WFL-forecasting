@@ -164,7 +164,7 @@ class SequenceEncoder(keras.layers.Layer):
         self.embedding_dims = embedding_dims
         self.seed = seed
         self.embedding = Embedding(input_dim=20, output_dim=embedding_dims)          
-        self.conv1 = Conv2D(64, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
+        self.conv1 = Conv2D(128, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
                             padding='same', activation='relu')
         self.maxpool1 = MaxPooling2D() 
         self.reshape = Reshape((-1, 128))        
@@ -179,10 +179,10 @@ class SequenceEncoder(keras.layers.Layer):
     # implement sequence encoding through call method  
     #--------------------------------------------------------------------------   
     def call(self, inputs, training):
-        layer = self.embedding(inputs)        
-        layer = self.conv1(layer)
+        layer = self.embedding(inputs)               
+        layer = self.conv1(layer)        
         layer = self.maxpool1(layer)
-        layer = self.reshape(layer)       
+        layer = self.reshape(layer)
         layer = self.lstm1(layer)
         layer = self.lstm2(layer)
         layer = self.BN(layer, training)
@@ -350,7 +350,7 @@ class WFLMultiSeq():
         self.seed = seed       
         self.XLA_state = XLA_state
         self.time_encoder = TimeEncoder(window_size, time_embedding)
-        self.sequence_encoder = SequenceEncoder(window_size, time_embedding, seed)
+        self.sequence_encoder = SequenceEncoder(window_size, kernel_size, time_embedding, seed)
         self.special_encoder = SpecialEncoder(window_size, time_embedding, seed)           
         self.sequence_decoder = SequenceDecoder(seed) 
         self.special_decoder = SpecialDecoder(seed)  
@@ -361,8 +361,8 @@ class WFLMultiSeq():
         sequence_input = Input(shape=(self.window_size, self.num_features))   
         special_input = Input(shape=(self.window_size, 1))        
         #----------------------------------------------------------------------
-        time_head = self.time_encoder(time_input)
-        sequence_head = self.sequence_encoder(sequence_input)
+        time_head = self.time_encoder(time_input)        
+        sequence_head = self.sequence_encoder(sequence_input)        
         special_head = self.special_encoder(special_input)
         concat = Concatenate()([time_head, sequence_head, special_head])        
         bnorm1 = BatchNormalization()(concat)
