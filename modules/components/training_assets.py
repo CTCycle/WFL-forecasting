@@ -163,32 +163,30 @@ class SequenceEncoder(keras.layers.Layer):
         self.embedding_dims = embedding_dims
         self.seed = seed
         self.embedding = Embedding(input_dim=20, output_dim=embedding_dims)          
-        self.conv1 = Conv2D(128, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
-                            padding='same', activation='relu')
-        self.maxpool1 = MaxPooling2D() 
-        self.conv2 = Conv2D(256, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
-                            padding='same', activation='relu')        
-        self.maxpool2 = MaxPooling2D(pool_size=(2,2))
+        self.conv1 = Conv2D(128, strides=(2,2), kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
+                            padding='same', activation='relu')         
+        self.conv2 = Conv2D(256, strides=(2,2), kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
+                            padding='same', activation='relu')         
         self.reshape = Reshape((-1, 128))        
         self.lstm1 = LSTM(256, use_bias=True, return_sequences=True, activation='tanh', 
                           kernel_initializer='glorot_uniform', dropout=0.2)
         self.lstm2 = LSTM(512, use_bias=True, return_sequences=False, activation='tanh', 
                           kernel_initializer='glorot_uniform', dropout=0.2)
+        self.dense1 = Dense(512, kernel_initializer='he_uniform', activation='LeakyReLU')
         self.BN = BatchNormalization()
         self.dropout = Dropout(rate=0.2, seed=self.seed)
-        self.dense_output = Dense(256, kernel_initializer='he_uniform', activation='relu')
+        self.dense_output = Dense(256, kernel_initializer='he_uniform', activation='LeakyReLU')
 
     # implement sequence encoding through call method  
     #--------------------------------------------------------------------------   
     def call(self, inputs, training):
         layer = self.embedding(inputs)               
-        layer = self.conv1(layer)        
-        layer = self.maxpool1(layer)
-        layer = self.conv2(layer)               
-        layer = self.maxpool2(layer)
+        layer = self.conv1(layer)       
+        layer = self.conv2(layer)       
         layer = self.reshape(layer)
         layer = self.lstm1(layer)
         layer = self.lstm2(layer)
+        layer = self.dense1(layer)
         layer = self.BN(layer, training)
         layer = self.dropout(layer, training)
         dense_output = self.dense_output(layer)
@@ -223,7 +221,7 @@ class SpecialEncoder(keras.layers.Layer):
         self.lstm2 = LSTM(128, use_bias=True, return_sequences=False, activation='tanh', 
                           kernel_initializer='glorot_uniform', dropout=0.2)
         self.BN = BatchNormalization()        
-        self.dense_output = Dense(256, kernel_initializer='he_uniform', activation='relu')
+        self.dense_output = Dense(256, kernel_initializer='he_uniform', activation='LeakyReLU')
 
     # implement sequence encoding through call method  
     #--------------------------------------------------------------------------    
@@ -370,11 +368,11 @@ class WFLMultiSeq():
         special_head = self.special_encoder(special_input)
         concat = Concatenate()([time_head, sequence_head, special_head])        
         bnorm1 = BatchNormalization()(concat)
-        densecat1 = Dense(512, kernel_initializer='he_uniform', activation='relu')(bnorm1)
+        densecat1 = Dense(512, kernel_initializer='he_uniform', activation='LeakyReLU')(bnorm1)
         bnorm2 = BatchNormalization()(densecat1) 
-        densecat2 = Dense(384, kernel_initializer='he_uniform', activation='relu')(bnorm2)
+        densecat2 = Dense(384, kernel_initializer='he_uniform', activation='LeakyReLU')(bnorm2)
         bnorm3 = BatchNormalization()(densecat2) 
-        densecat3 = Dense(256, kernel_initializer='he_uniform', activation='relu')(bnorm3)        
+        densecat3 = Dense(256, kernel_initializer='he_uniform', activation='LeakyReLU')(bnorm3)        
         sequence_output = self.sequence_decoder(sequence_head, densecat3)
         special_output = self.special_decoder(special_head, densecat3)
         #----------------------------------------------------------------------        
