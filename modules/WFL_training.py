@@ -1,6 +1,7 @@
 import os
 import sys
 import pandas as pd
+import numpy as np
 import pickle
 import tensorflow as tf
 from sklearn.preprocessing import OneHotEncoder, MultiLabelBinarizer
@@ -185,11 +186,10 @@ if cnf.save_files==True:
 #==============================================================================
 print('''STEP 4 -----> Build the model and start training
 ''')
-model_savepath = PP.model_savefolder(GlobVar.model_path, 'WFLMulti')
 trainworker = ModelTraining(device=cnf.training_device, seed=cnf.seed, 
                             use_mixed_precision=cnf.use_mixed_precision)
 
-# initialize model class
+# initialize model class and build the model
 #------------------------------------------------------------------------------
 modelframe = WFLMultiSeq(cnf.learning_rate, cnf.window_size, cnf.embedding_time, 
                          cnf.embedding_sequence, cnf.embedding_special, cnf.kernel_size, 
@@ -244,7 +244,7 @@ else:
 
 # initialize tensorboard
 #------------------------------------------------------------------------------
-if cnf.use_tensorboard == True:
+if cnf.use_tensorboard==True:
     log_path = os.path.join(model_savepath, 'tensorboard')
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_path, histogram_freq=1)
     callbacks = [RTH_callback, tensorboard_callback]    
@@ -257,18 +257,20 @@ training = model.fit(x=train_model_inputs, y=train_model_outputs, batch_size=cnf
                      validation_data=validation_data, epochs = cnf.epochs, verbose=1, shuffle=False, 
                      callbacks = callbacks, workers = 6, use_multiprocessing=True)
 
+model.save(model_savepath)
+
 # save model data and parameters in txt files
 #------------------------------------------------------------------------------
 parameters = {'Number of train samples' : train_samples,
               'Number of test samples' : test_samples,             
-              'Window size' : cnf.window_size,              
+              'Window size' : cnf.window_size,           
+              'Embedding dimensions (time)' : cnf.embedding_time,   
               'Embedding dimensions (sequences)' : cnf.embedding_sequence,  
               'Embedding dimensions (special)' : cnf.embedding_special,            
               'Batch size' : cnf.batch_size,
               'Learning rate' : cnf.learning_rate,
               'Epochs' : cnf.epochs}
 
-model.save(model_savepath)
 trainworker.model_parameters(parameters, model_savepath)
 
 # [MODEL VALIDATION]
@@ -281,9 +283,8 @@ validator = ModelValidation(model)
 
 # predict lables from train set
 #------------------------------------------------------------------------------
-#predicted_train = model.predict(train_model_inputs, verbose=1)
-# predicted_extractions = []
-# predicted_special = np.argmax(predicted_train[1], axis=-1)
+train_predictions = model.predict(train_model_inputs, verbose=1)
+# predicted_sequences = np.argmax(train_predictions[0], axis=-1)
 # y_true_labels = np.argmax(Y_train_OHE, axis=-1)
 # Y_pred, Y_true = y_pred_labels[:, 0], y_true_labels[:, 0]
 

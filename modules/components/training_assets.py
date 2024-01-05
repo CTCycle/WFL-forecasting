@@ -11,7 +11,6 @@ from keras.layers import Embedding, Reshape, Input, Concatenate, Add
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.preprocessing import label_binarize
 
-
 # [CALLBACK FOR REAL TIME TRAINING MONITORING]
 #==============================================================================
 # Real time monitoring callback
@@ -167,10 +166,13 @@ class SequenceEncoder(keras.layers.Layer):
         self.conv1 = Conv2D(128, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
                             padding='same', activation='relu')
         self.maxpool1 = MaxPooling2D() 
+        self.conv2 = Conv2D(256, kernel_size=self.kernel_size, kernel_initializer='he_uniform', 
+                            padding='same', activation='relu')        
+        self.maxpool2 = MaxPooling2D(pool_size=(2,2))
         self.reshape = Reshape((-1, 128))        
-        self.lstm1 = LSTM(128, use_bias=True, return_sequences=True, activation='tanh', 
+        self.lstm1 = LSTM(256, use_bias=True, return_sequences=True, activation='tanh', 
                           kernel_initializer='glorot_uniform', dropout=0.2)
-        self.lstm2 = LSTM(256, use_bias=True, return_sequences=False, activation='tanh', 
+        self.lstm2 = LSTM(512, use_bias=True, return_sequences=False, activation='tanh', 
                           kernel_initializer='glorot_uniform', dropout=0.2)
         self.BN = BatchNormalization()
         self.dropout = Dropout(rate=0.2, seed=self.seed)
@@ -182,6 +184,8 @@ class SequenceEncoder(keras.layers.Layer):
         layer = self.embedding(inputs)               
         layer = self.conv1(layer)        
         layer = self.maxpool1(layer)
+        layer = self.conv2(layer)               
+        layer = self.maxpool2(layer)
         layer = self.reshape(layer)
         layer = self.lstm1(layer)
         layer = self.lstm2(layer)
